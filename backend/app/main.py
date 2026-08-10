@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 from app.database import connect_db, close_db
 from app.routes import nits
 from app.routes import auth       
-from app.routes import profile             
+from app.routes import profile  
+from app.routes import recommend            
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -30,6 +31,7 @@ app.add_middleware(
 app.include_router(nits.router, prefix="/api/v1", tags=["NITs"])
 app.include_router(auth.router, prefix="/api/v1", tags=["Auth"])  
 app.include_router(profile.router, prefix="/api/v1", tags=["Profile"])  
+app.include_router(recommend.router, prefix="/api/v1", tags=["Recommendations"])  
 
 @app.get("/")
 def root():
