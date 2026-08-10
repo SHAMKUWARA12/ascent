@@ -26,11 +26,11 @@ def score_nit(nit, student):
     # Using dummy scores for now
     # Will be replaced by ML model later
     dummy_closing = {
-        "NITSLR": {"UR": 620, "OBC": 590, "SC": 540, "ST": 490, "EWS": 610},
-        "NITRK":  {"UR": 670, "OBC": 635, "SC": 580, "ST": 530, "EWS": 655},
-        "NITT":   {"UR": 680, "OBC": 645, "SC": 590, "ST": 540, "EWS": 665},
-        "NITW":   {"UR": 690, "OBC": 655, "SC": 600, "ST": 550, "EWS": 675},
-        "NITC":   {"UR": 660, "OBC": 625, "SC": 570, "ST": 520, "EWS": 645},
+        "NITSLR": {"UR": 600, "OBC": 578, "SC": 530, "ST": 480, "EWS": 592},
+        "NITRK":  {"UR": 645, "OBC": 618, "SC": 565, "ST": 510, "EWS": 635},
+        "NITT":   {"UR": 658, "OBC": 628, "SC": 575, "ST": 522, "EWS": 648},
+        "NITW":   {"UR": 668, "OBC": 638, "SC": 585, "ST": 532, "EWS": 658},
+        "NITC":   {"UR": 638, "OBC": 610, "SC": 558, "ST": 505, "EWS": 628},
     }
 
     nit_code = nit.get("nit_code", "")
