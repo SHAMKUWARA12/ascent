@@ -5,7 +5,8 @@ from app.database import connect_db, close_db
 from app.routes import nits
 from app.routes import auth       
 from app.routes import profile  
-from app.routes import recommend            
+from app.routes import recommend 
+from app.routes import choice_filing            
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,6 +33,7 @@ app.include_router(nits.router, prefix="/api/v1", tags=["NITs"])
 app.include_router(auth.router, prefix="/api/v1", tags=["Auth"])  
 app.include_router(profile.router, prefix="/api/v1", tags=["Profile"])  
 app.include_router(recommend.router, prefix="/api/v1", tags=["Recommendations"])  
+app.include_router(choice_filing.router, prefix="/api/v1", tags=["Choice Filing"])
 
 @app.get("/")
 def root():
