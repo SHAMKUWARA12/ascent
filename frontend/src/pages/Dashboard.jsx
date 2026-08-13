@@ -1,7 +1,403 @@
-export default function Dashboard() {
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { getRecommendations, getChoiceFilingPart1 } from '../services/api'
+
+// ---------- NIT Card ----------
+function NITCard({ nit, rank }) {
+  const [expanded, setExpanded] = useState(false)
+
+  const bucketColor = {
+    Safe: 'bg-green-50 border-green-200',
+    Target: 'bg-amber-50 border-amber-200',
+    Ambitious: 'bg-red-50 border-red-200'
+  }
+
+  const probColor = {
+    Safe: 'text-green-700',
+    Target: 'text-amber-700',
+    Ambitious: 'text-red-600'
+  }
+
+  const bucketBadge = {
+    Safe: 'bg-green-100 text-green-700',
+    Target: 'bg-amber-100 text-amber-700',
+    Ambitious: 'bg-red-100 text-red-600'
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <p className="text-gray-400">Dashboard — coming next step</p>
+    <div className={`border rounded-2xl p-4 mb-3 ${bucketColor[nit.bucket]}`}>
+
+      {/* Top row */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="text-xs font-bold text-gray-400 w-5 mt-1">
+            #{rank}
+          </span>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-semibold text-gray-900 text-sm">
+                {nit.nit_name}
+              </h3>
+              {nit.home_state && (
+                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                  🏠 Home State
+                </span>
+              )}
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${bucketBadge[nit.bucket]}`}>
+                {nit.bucket}
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {nit.location} · NIRF #{nit.nirf_rank}
+            </p>
+          </div>
+        </div>
+
+        <div className="text-right flex-shrink-0">
+          <p className={`text-lg font-bold ${probColor[nit.bucket]}`}>
+            {nit.admission_probability}%
+          </p>
+          <p className="text-xs text-gray-400">probability</p>
+        </div>
+      </div>
+
+      {/* Score info */}
+      <div className="flex gap-4 mt-3 px-8">
+        <div>
+          <p className="text-xs text-gray-400">Predicted Closing</p>
+          <p className="text-sm font-semibold text-gray-800">
+            {nit.predicted_closing_score}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400">Your Score</p>
+          <p className="text-sm font-semibold text-gray-800">
+            {nit.your_score}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400">Sentiment</p>
+          <p className="text-sm font-semibold text-gray-800">
+            {nit.sentiment_score}/10
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400">Total Score</p>
+          <p className="text-sm font-semibold text-gray-800">
+            {nit.total_score}/100
+          </p>
+        </div>
+      </div>
+
+      {/* Expand button */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="text-xs text-blue-600 hover:underline mt-3 px-8"
+      >
+        {expanded ? 'Hide breakdown ▲' : 'View score breakdown ▼'}
+      </button>
+
+      {/* Score breakdown */}
+      {expanded && (
+        <div className="mt-3 px-8 grid grid-cols-3 gap-2">
+          {Object.entries(nit.score_breakdown).map(([key, val]) => (
+            <div key={key} className="bg-white rounded-xl p-2 text-center">
+              <p className="text-xs text-gray-400 capitalize">
+                {key.replace('_', ' ')}
+              </p>
+              <p className="text-sm font-semibold text-gray-800">{val}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+    </div>
+  )
+}
+
+// ---------- Choice Filing List ----------
+function ChoiceFilingList({ token }) {
+  const [list, setList] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const fetchList = async () => {
+    setLoading(true)
+    try {
+      const res = await getChoiceFilingPart1(token)
+      setList(res.data)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const copyList = () => {
+    if (!list) return
+    const text = list.preferences
+      .map(p =>
+        `${p.preference_no}. ${p.nit_name} | ${p.branch} | ${p.category} (${p.probability}%)`
+      )
+      .join('\n')
+    navigator.clipboard.writeText(text)
+    alert('Choice filing list copied to clipboard!')
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="font-semibold text-gray-900">
+            Part 1 Choice Filing List
+          </h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Regular Rounds — R1, R2, R3
+          </p>
+        </div>
+        {!list && (
+          <button
+            onClick={fetchList}
+            disabled={loading}
+            className="bg-blue-900 text-white text-sm px-4 py-2 rounded-xl hover:bg-blue-800 disabled:opacity-50"
+          >
+            {loading ? 'Generating...' : 'Generate List'}
+          </button>
+        )}
+        {list && (
+          <button
+            onClick={copyList}
+            className="bg-green-700 text-white text-sm px-4 py-2 rounded-xl hover:bg-green-600"
+          >
+            Copy List
+          </button>
+        )}
+      </div>
+
+      {list && (
+        <>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs text-amber-800">
+            ⚠️ {list.important_note}
+          </div>
+
+          <div className="flex flex-col gap-1">
+            {list.preferences.map(p => (
+              <div
+                key={p.preference_no}
+                className="flex items-center gap-3 py-2 px-3 rounded-xl hover:bg-gray-50"
+              >
+                <span className="text-xs font-bold text-gray-400 w-6">
+                  {p.preference_no}
+                </span>
+                <div className="flex-1">
+                  <span className="text-sm font-medium text-gray-800">
+                    {p.nit_name}
+                  </span>
+                  <span className="text-xs text-gray-400 ml-2">
+                    {p.branch} · {p.category}
+                  </span>
+                </div>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                  p.bucket === 'Safe'
+                    ? 'bg-green-100 text-green-700'
+                    : p.bucket === 'Target'
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-red-100 text-red-600'
+                }`}>
+                  {p.probability}%
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-xs text-gray-400 mt-4 leading-relaxed">
+            {list.why_this_order}
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ---------- Main Dashboard ----------
+export default function Dashboard() {
+  const { token, student } = useAuth()
+  const navigate = useNavigate()
+
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [activeTab, setActiveTab] = useState('recommendations')
+
+  useEffect(() => {
+    fetchRecommendations()
+  }, [])
+
+  const fetchRecommendations = async () => {
+    setLoading(true)
+    try {
+      const res = await getRecommendations(token)
+      setData(res.data)
+    } catch (err) {
+      setError(
+        err.response?.data?.detail || 'Failed to load recommendations.'
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-blue-900 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-gray-400 text-sm">
+            Analysing NITs for your profile...
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-500 mb-4">{error}</p>
+          <button
+            onClick={() => navigate('/profile')}
+            className="bg-blue-900 text-white px-6 py-2 rounded-xl text-sm"
+          >
+            Complete Profile First
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const allNITs = [
+    ...(data?.safe || []),
+    ...(data?.target || []),
+    ...(data?.ambitious || [])
+  ]
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+
+      {/* Header */}
+      <div className="bg-blue-900 text-white px-6 py-6">
+        <h1 className="text-xl font-semibold mb-1">
+          Welcome, {data?.student?.name?.split(' ')[0]}!
+        </h1>
+        <p className="text-blue-200 text-sm">
+          GATE Score: {data?.student?.gate_score} ·
+          Category: {data?.student?.category} ·
+          Domicile: {data?.student?.domicile}
+        </p>
+        <div className="flex gap-4 mt-4 text-sm">
+          <div className="bg-blue-800 rounded-xl px-4 py-2 text-center">
+            <p className="text-blue-300 text-xs">Total Eligible</p>
+            <p className="font-bold text-lg">{data?.total_eligible}</p>
+          </div>
+          <div className="bg-blue-800 rounded-xl px-4 py-2 text-center">
+            <p className="text-blue-300 text-xs">Safe</p>
+            <p className="font-bold text-lg text-green-300">
+              {data?.safe?.length}
+            </p>
+          </div>
+          <div className="bg-blue-800 rounded-xl px-4 py-2 text-center">
+            <p className="text-blue-300 text-xs">Target</p>
+            <p className="font-bold text-lg text-amber-300">
+              {data?.target?.length}
+            </p>
+          </div>
+          <div className="bg-blue-800 rounded-xl px-4 py-2 text-center">
+            <p className="text-blue-300 text-xs">Ambitious</p>
+            <p className="font-bold text-lg text-red-300">
+              {data?.ambitious?.length}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="bg-white border-b border-gray-100 px-6">
+        <div className="flex gap-6">
+          {[
+            { id: 'recommendations', label: 'Recommendations' },
+            { id: 'choice-filing', label: 'Choice Filing' }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`py-3 text-sm font-medium border-b-2 transition-all ${
+                activeTab === tab.id
+                  ? 'border-blue-900 text-blue-900'
+                  : 'border-transparent text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="max-w-3xl mx-auto px-4 py-6">
+
+        {/* Recommendations Tab */}
+        {activeTab === 'recommendations' && (
+          <div>
+            {data?.safe?.length > 0 && (
+              <div className="mb-6">
+                <h2 className="text-sm font-semibold text-green-700 uppercase tracking-widest mb-3">
+                  🟢 Safe Choices
+                </h2>
+                {data.safe.map((nit, i) => (
+                  <NITCard key={nit.nit_code} nit={nit} rank={i + 1} />
+                ))}
+              </div>
+            )}
+
+            {data?.target?.length > 0 && (
+              <div className="mb-6">
+                <h2 className="text-sm font-semibold text-amber-700 uppercase tracking-widest mb-3">
+                  🟡 Target Choices
+                </h2>
+                {data.target.map((nit, i) => (
+                  <NITCard
+                    key={nit.nit_code}
+                    nit={nit}
+                    rank={data.safe.length + i + 1}
+                  />
+                ))}
+              </div>
+            )}
+
+            {data?.ambitious?.length > 0 && (
+              <div className="mb-6">
+                <h2 className="text-sm font-semibold text-red-600 uppercase tracking-widest mb-3">
+                  🔴 Ambitious Choices
+                </h2>
+                {data.ambitious.map((nit, i) => (
+                  <NITCard
+                    key={nit.nit_code}
+                    nit={nit}
+                    rank={data.safe.length + data.target.length + i + 1}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Choice Filing Tab */}
+        {activeTab === 'choice-filing' && (
+          <ChoiceFilingList token={token} />
+        )}
+
+      </div>
     </div>
   )
 }
