@@ -7,6 +7,7 @@ import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Profile from './pages/Profile'
 import Dashboard from './pages/Dashboard'
+import ProfileView from './pages/ProfileView'
 
 function App() {
   return (
@@ -20,6 +21,11 @@ function App() {
           <Route path="/profile" element={
             <ProtectedRoute>
               <Profile />
+            </ProtectedRoute>
+          } />
+          <Route path="/profile-view" element={
+            <ProtectedRoute>
+              <ProfileView />
             </ProtectedRoute>
           } />
           <Route path="/dashboard" element={

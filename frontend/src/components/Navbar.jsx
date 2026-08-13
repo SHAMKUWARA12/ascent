@@ -23,6 +23,9 @@ export default function Navbar() {
             <Link to="/dashboard" className="hover:text-blue-200">
               Dashboard
             </Link>
+            <Link to="/profile-view" className="hover:text-blue-200">
+              My Profile
+            </Link>
             <span className="text-blue-300">
               {student.full_name}
             </span>

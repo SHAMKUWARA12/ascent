@@ -46,3 +46,19 @@ export const getAdvisor = (token, current, target) =>
   API.post(
     `/advisor?token=${token}&current_allocation=${current}&target_nit=${target}`
   )
+
+// ---------- Update Profile ----------
+export const updateGATEDetails = (data, token) =>
+  API.post(`/profile/gate?token=${token}`, data)
+
+export const updatePersonalDetails = (data, token) =>
+  API.post(`/profile/personal?token=${token}`, data)
+
+export const updateBranchPreferences = (data, token) =>
+  API.post(`/profile/branches?token=${token}`, data)
+
+export const updateLocationPreferences = (data, token) =>
+  API.post(`/profile/location?token=${token}`, data)
+
+export const updateConstraints = (data, token) =>
+  API.post(`/profile/constraints?token=${token}`, data)
