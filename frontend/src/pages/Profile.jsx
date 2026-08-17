@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -6,7 +6,8 @@ import {
   savePersonalDetails,
   saveBranchPreferences,
   saveLocationPreferences,
-  saveConstraints
+  saveConstraints,
+  getProfile
 } from '../services/api'
 
 const STEPS = [
@@ -27,10 +28,12 @@ export default function Profile() {
 
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
+  const [fetching, setFetching] = useState(true)
   const [error, setError] = useState('')
   const [homeNIT, setHomeNIT] = useState('')
+  const [isEditing, setIsEditing] = useState(false)
 
-  // Form states
+  // Form states — pre-filled with defaults
   const [gate, setGate] = useState({
     gate_score: '',
     gate_year: 2026,
@@ -63,7 +66,80 @@ export default function Profile() {
     btec_cgpa: ''
   })
 
-  // ---------- Branch priority helpers ----------
+  // ---------- Load existing profile on mount ----------
+  useEffect(() => {
+    loadExistingProfile()
+  }, [])
+
+  const loadExistingProfile = async () => {
+    try {
+      const res = await getProfile(token)
+      const p = res.data
+
+      if (p.profile_complete) {
+        setIsEditing(true)
+      }
+
+      // Pre-fill GATE details
+      if (p.gate_score) {
+        setGate({
+          gate_score: p.gate_score ?? '',
+          gate_year: p.gate_year ?? 2026,
+          gate_air: p.gate_air ?? '',
+          category: p.category ?? 'OBC'
+        })
+      }
+
+      // Pre-fill personal details
+      if (p.gender) {
+        setPersonal({
+          gender: p.gender ?? 'Male',
+          pwd_status: p.pwd_status ?? false,
+          domicile_state: p.domicile_state ?? ''
+        })
+      }
+
+      // Pre-fill branch preferences
+      if (p.branch_priorities) {
+        setBranches({
+          priorities: p.branch_priorities ?? ['CSE'],
+          any_branch: p.any_branch ?? false
+        })
+      }
+
+      // Pre-fill location
+      if (p.preferred_region) {
+        setLocation({
+          preferred_region: p.preferred_region ?? 'Any',
+          states_to_avoid: p.states_to_avoid ?? []
+        })
+      }
+
+      // Pre-fill constraints
+      if (p.risk_appetite) {
+        setConstraints({
+          risk_appetite: p.risk_appetite ?? 'Moderate',
+          mtech_goal: p.mtech_goal ?? 'Industry',
+          fee_budget: p.fee_budget ?? 150000,
+          hostel_needed: p.hostel_needed ?? true,
+          has_backlogs: p.has_backlogs ?? false,
+          btec_cgpa: p.btec_cgpa ?? ''
+        })
+      }
+
+      // Set home NIT if exists
+      if (p.home_state_nit) {
+        setHomeNIT(p.home_state_nit)
+      }
+
+    } catch (err) {
+      console.error('Could not load profile', err)
+    } finally {
+      setFetching(false)
+    }
+  }
+
+  // ---------- Branch toggle ----------
   const toggleBranch = (branch) => {
     setBranches(prev => {
       if (prev.priorities.includes(branch)) {
@@ -80,7 +156,7 @@ export default function Profile() {
     })
   }
 
-  // ---------- Step submit handlers ----------
+  // ---------- Step submit ----------
   const handleNext = async () => {
     setLoading(true)
     setError('')
@@ -101,8 +177,7 @@ export default function Profile() {
           const nit = res.data.home_state_advantage.split(': ')[1]
           setHomeNIT(nit)
           setLoading(false)
-          // Show message for 1.5 seconds then move to next step
-          setTimeout(() => setStep(step + 1), 1500)
+          setStep(step+1)
           return
         }
       }
@@ -138,6 +213,18 @@ export default function Profile() {
     }
   }
 
+  // ---------- Loading state ----------
+  if (fetching) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-blue-900 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-gray-400 text-sm">Loading your profile...</p>
+        </div>
+      </div>
+    )
+  }
+
   // ---------- Render ----------
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4">
@@ -146,11 +233,16 @@ export default function Profile() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-blue-900 mb-1">
-            Complete Your Profile
+            {isEditing ? 'Edit Your Profile' : 'Complete Your Profile'}
           </h1>
           <p className="text-gray-400 text-sm">
             Step {step + 1} of {STEPS.length} — {STEPS[step]}
           </p>
+          {isEditing && (
+            <p className="text-xs text-green-600 mt-1">
+              ✅ Your existing data is pre-filled — just change what you need
+            </p>
+          )}
         </div>
 
         {/* Progress bar */}
@@ -158,12 +250,32 @@ export default function Profile() {
           {STEPS.map((s, i) => (
             <div
               key={i}
+              onClick={() => i < step && setStep(i)}
               className={`h-1.5 flex-1 rounded-full transition-all ${
                 i <= step ? 'bg-blue-900' : 'bg-gray-200'
-              }`}
+              } ${i < step ? 'cursor-pointer hover:bg-blue-700' : ''}`}
             />
           ))}
         </div>
+
+        {/* Step tabs — click to jump back */}
+        {isEditing && (
+          <div className="flex gap-1 mb-6 flex-wrap">
+            {STEPS.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => setStep(i)}
+                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
+                  step === i
+                    ? 'bg-blue-900 text-white'
+                    : 'bg-white text-gray-500 border border-gray-200 hover:border-blue-300'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
@@ -239,7 +351,7 @@ export default function Profile() {
             </div>
           )}
 
-          {/* ---------- Step 1: Personal Details ---------- */}
+          {/* ---------- Step 1: Personal ---------- */}
           {step === 1 && (
             <div className="flex flex-col gap-4">
               <h2 className="font-semibold text-gray-800 mb-2">
@@ -272,13 +384,79 @@ export default function Profile() {
                 <label className="text-sm font-medium text-gray-700 mb-1 block">
                   Domicile State
                 </label>
-                <input
-                  type="text"
+                <select
                   value={personal.domicile_state}
-                  onChange={e => setPersonal({...personal, domicile_state: e.target.value})}
-                  placeholder="e.g. Assam"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400"
-                />
+                  onChange={e => {
+                    const state = e.target.value
+                    setPersonal({...personal, domicile_state: state})
+
+                    // Auto-detect home state NIT immediately
+                    const mapping = {
+                      "Andhra Pradesh":   "NIT Andhra Pradesh",
+                      "Assam":            "NIT Silchar",
+                      "Bihar":            "NIT Patna",
+                      "Chhattisgarh":     "NIT Raipur",
+                      "Delhi":            "NIT Delhi",
+                      "Goa":              "NIT Goa",
+                      "Gujarat":          "NIT Surat",
+                      "Haryana":          "NIT Kurukshetra",
+                      "Himachal Pradesh": "NIT Hamirpur",
+                      "Jharkhand":        "NIT Jamshedpur",
+                      "Karnataka":        "NIT Surathkal",
+                      "Kerala":           "NIT Calicut",
+                      "Madhya Pradesh":   "NIT Bhopal",
+                      "Maharashtra":      "NIT Nagpur",
+                      "Manipur":          "NIT Manipur",
+                      "Meghalaya":        "NIT Meghalaya",
+                      "Mizoram":          "NIT Mizoram",
+                      "Nagaland":         "NIT Nagaland",
+                      "Odisha":           "NIT Rourkela",
+                      "Punjab":           "NIT Jalandhar",
+                      "Rajasthan":        "NIT Jaipur",
+                      "Sikkim":           "NIT Sikkim",
+                      "Tamil Nadu":       "NIT Trichy",
+                      "Telangana":        "NIT Warangal",
+                      "Tripura":          "NIT Agartala",
+                      "Uttar Pradesh":    "NIT Allahabad",
+                      "Uttarakhand":      "NIT Uttarakhand",
+                      "West Bengal":      "NIT Durgapur",
+                    }
+
+                    const detected = mapping[state] || null
+                    setHomeNIT(detected || '')
+                  }}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
+                >
+                  <option value="">Select your state</option>
+                  <option value="Andhra Pradesh">Andhra Pradesh</option>
+                  <option value="Assam">Assam</option>
+                  <option value="Bihar">Bihar</option>
+                  <option value="Chhattisgarh">Chhattisgarh</option>
+                  <option value="Delhi">Delhi</option>
+                  <option value="Goa">Goa</option>
+                  <option value="Gujarat">Gujarat</option>
+                  <option value="Haryana">Haryana</option>
+                  <option value="Himachal Pradesh">Himachal Pradesh</option>
+                  <option value="Jharkhand">Jharkhand</option>
+                  <option value="Karnataka">Karnataka</option>
+                  <option value="Kerala">Kerala</option>
+                  <option value="Madhya Pradesh">Madhya Pradesh</option>
+                  <option value="Maharashtra">Maharashtra</option>
+                  <option value="Manipur">Manipur</option>
+                  <option value="Meghalaya">Meghalaya</option>
+                  <option value="Mizoram">Mizoram</option>
+                  <option value="Nagaland">Nagaland</option>
+                  <option value="Odisha">Odisha</option>
+                  <option value="Punjab">Punjab</option>
+                  <option value="Rajasthan">Rajasthan</option>
+                  <option value="Sikkim">Sikkim</option>
+                  <option value="Tamil Nadu">Tamil Nadu</option>
+                  <option value="Telangana">Telangana</option>
+                  <option value="Tripura">Tripura</option>
+                  <option value="Uttar Pradesh">Uttar Pradesh</option>
+                  <option value="Uttarakhand">Uttarakhand</option>
+                  <option value="West Bengal">West Bengal</option>
+                </select>
               </div>
 
               <div className="flex items-center gap-3">
@@ -296,20 +474,20 @@ export default function Profile() {
 
               {homeNIT && (
                 <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-green-700 text-sm">
-                  🏠 Home state advantage detected — <strong>{homeNIT}</strong>
+                  🏠 Home state NIT — <strong>{homeNIT}</strong>
                 </div>
               )}
             </div>
           )}
 
-          {/* ---------- Step 2: Branch Preferences ---------- */}
+          {/* ---------- Step 2: Branch ---------- */}
           {step === 2 && (
             <div className="flex flex-col gap-4">
               <h2 className="font-semibold text-gray-800 mb-2">
                 Branch Preferences
               </h2>
               <p className="text-sm text-gray-400">
-                Select all branches you are interested in.
+                Select all branches you want.
                 First selected = highest priority.
               </p>
 
@@ -365,26 +543,21 @@ export default function Profile() {
                 Location Preferences
               </h2>
 
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-2 block">
-                  Preferred Region
-                </label>
-                <div className="flex flex-col gap-2">
-                  {REGIONS.map(region => (
-                    <button
-                      key={region}
-                      type="button"
-                      onClick={() => setLocation({...location, preferred_region: region})}
-                      className={`w-full py-2.5 rounded-xl border text-sm font-medium text-left px-4 transition-all ${
-                        location.preferred_region === region
-                          ? 'bg-blue-900 text-white border-blue-900'
-                          : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
-                      }`}
-                    >
-                      {region}
-                    </button>
-                  ))}
-                </div>
+              <div className="flex flex-col gap-2">
+                {REGIONS.map(region => (
+                  <button
+                    key={region}
+                    type="button"
+                    onClick={() => setLocation({...location, preferred_region: region})}
+                    className={`w-full py-2.5 rounded-xl border text-sm font-medium text-left px-4 transition-all ${
+                      location.preferred_region === region
+                        ? 'bg-blue-900 text-white border-blue-900'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
+                    }`}
+                  >
+                    {region}
+                  </button>
+                ))}
               </div>
             </div>
           )}
@@ -448,7 +621,6 @@ export default function Profile() {
                   type="number"
                   value={constraints.fee_budget}
                   onChange={e => setConstraints({...constraints, fee_budget: e.target.value})}
-                  placeholder="e.g. 150000"
                   className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400"
                 />
               </div>
@@ -481,7 +653,6 @@ export default function Profile() {
                     Hostel required
                   </label>
                 </div>
-
                 <div className="flex items-center gap-3">
                   <input
                     type="checkbox"
@@ -505,7 +676,7 @@ export default function Profile() {
             </div>
           )}
 
-          {/* Navigation buttons */}
+          {/* Navigation */}
           <div className="flex gap-3 mt-6">
             {step > 0 && (
               <button
@@ -525,12 +696,23 @@ export default function Profile() {
               {loading
                 ? 'Saving...'
                 : step === STEPS.length - 1
-                ? 'Complete Profile'
+                ? isEditing ? 'Save Changes' : 'Complete Profile'
                 : 'Next'}
             </button>
           </div>
 
         </div>
+
+        {/* Cancel button when editing */}
+        {isEditing && (
+          <button
+            onClick={() => navigate('/profile-view')}
+            className="w-full text-gray-400 text-sm mt-4 hover:text-gray-600"
+          >
+            Cancel — go back to profile
+          </button>
+        )}
+
       </div>
     </div>
   )
