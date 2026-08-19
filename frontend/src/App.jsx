@@ -8,6 +8,7 @@ import Signup from './pages/Signup'
 import Profile from './pages/Profile'
 import Dashboard from './pages/Dashboard'
 import ProfileView from './pages/ProfileView'
+import NITDetail from './pages/NITDetail'
 
 function App() {
   return (
@@ -31,6 +32,11 @@ function App() {
           <Route path="/dashboard" element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/nit/:nit_code" element={
+            <ProtectedRoute>
+              <NITDetail />
             </ProtectedRoute>
           } />
         </Routes>

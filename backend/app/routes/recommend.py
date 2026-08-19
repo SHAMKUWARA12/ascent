@@ -4,17 +4,11 @@ from app.auth import decode_token
 
 router = APIRouter()
 
-# ---------- Helper: Score a NIT ----------
+def score_nit_programme(nit, programme, student):
 
-def score_nit(nit, student):
-
-    total = 0
-
-    # --- Factor 1: Admission Probability (40 points) ---
     gate_score = student.get("gate_score", 0)
     category = student.get("category", "UR").upper()
 
-    # Map category to seat key
     cat_map = {
         "UR": "UR", "GENERAL": "UR",
         "OBC": "OBC", "OBC-NCL": "OBC",
@@ -22,21 +16,32 @@ def score_nit(nit, student):
     }
     cat_key = cat_map.get(category, "UR")
 
-    # Get predicted closing score for this NIT
-    # Using dummy scores for now
-    # Will be replaced by ML model later
+    # Dummy closing scores per programme per category
     dummy_closing = {
-        "NITSLR": {"UR": 600, "OBC": 578, "SC": 530, "ST": 480, "EWS": 592},
-        "NITRK":  {"UR": 645, "OBC": 618, "SC": 565, "ST": 510, "EWS": 635},
-        "NITT":   {"UR": 658, "OBC": 628, "SC": 575, "ST": 522, "EWS": 648},
-        "NITW":   {"UR": 668, "OBC": 638, "SC": 585, "ST": 532, "EWS": 658},
-        "NITC":   {"UR": 638, "OBC": 610, "SC": 558, "ST": 505, "EWS": 628},
+        "NITSLR_CSE": {"UR":600,"OBC":578,"SC":530,"ST":480,"EWS":592},
+        "NITSLR_AI":  {"UR":588,"OBC":565,"SC":518,"ST":468,"EWS":580},
+        "NITSLR_DS":  {"UR":575,"OBC":552,"SC":505,"ST":455,"EWS":568},
+        "NITRK_CSE":  {"UR":645,"OBC":618,"SC":565,"ST":510,"EWS":635},
+        "NITRK_AI":   {"UR":632,"OBC":605,"SC":552,"ST":498,"EWS":622},
+        "NITT_CSE":   {"UR":658,"OBC":628,"SC":575,"ST":522,"EWS":648},
+        "NITT_DS":    {"UR":642,"OBC":612,"SC":560,"ST":508,"EWS":632},
+        "NITW_CSE":   {"UR":668,"OBC":638,"SC":585,"ST":532,"EWS":658},
+        "NITW_AI":    {"UR":655,"OBC":625,"SC":572,"ST":520,"EWS":645},
+        "NITW_DS":    {"UR":645,"OBC":615,"SC":562,"ST":510,"EWS":635},
+        "NITC_CSE":   {"UR":638,"OBC":610,"SC":558,"ST":505,"EWS":628},
+        "NITC_IT":    {"UR":622,"OBC":595,"SC":542,"ST":490,"EWS":612},
     }
 
-    nit_code = nit.get("nit_code", "")
-    predicted_closing = dummy_closing.get(nit_code, {}).get(cat_key, 999)
+    prog_id = programme.get("program_id", "")
+    predicted_closing = dummy_closing.get(prog_id, {}).get(cat_key, 999)
 
-    # Calculate probability
+    # Check GATE paper eligibility
+    student_paper = student.get("gate_paper", "CS").upper()
+    accepted_papers = programme.get("gate_papers", ["CS"])
+    if student_paper not in accepted_papers:
+        return None  # Not eligible for this programme
+
+    # Probability calculation
     if gate_score >= predicted_closing + 20:
         probability = 95
     elif gate_score >= predicted_closing:
@@ -48,10 +53,10 @@ def score_nit(nit, student):
     else:
         probability = 5
 
+    # Factor 1: Probability (40pts)
     factor1 = (probability / 100) * 40
-    total += factor1
 
-    # --- Factor 2: NIRF Ranking (20 points) ---
+    # Factor 2: NIRF ranking (20pts)
     nirf = nit.get("nirf_rank", 50)
     if nirf <= 10:
         factor2 = 20
@@ -63,11 +68,8 @@ def score_nit(nit, student):
         factor2 = 8
     else:
         factor2 = 4
-    total += factor2
 
-    # --- Factor 3: Sentiment Score (15 points) ---
-    # Dummy sentiment scores for now
-    # Will be replaced by real Reddit/PaGaLGuY data later
+    # Factor 3: Sentiment (15pts)
     dummy_sentiment = {
         "NITSLR": 7.1,
         "NITRK":  8.1,
@@ -75,50 +77,42 @@ def score_nit(nit, student):
         "NITW":   8.4,
         "NITC":   7.9,
     }
+    nit_code = nit.get("nit_code", "")
     sentiment = dummy_sentiment.get(nit_code, 6.0)
     factor3 = (sentiment / 10) * 15
-    total += factor3
 
-    # --- Factor 4: Location Match (15 points) ---
+    # Factor 4: Location (15pts)
     preferred_region = student.get("preferred_region", "Any")
     nit_region = nit.get("region", "")
-
     if preferred_region == "Any":
         factor4 = 10
     elif preferred_region.lower() in nit_region.lower():
         factor4 = 15
     else:
         factor4 = 5
-    total += factor4
 
-    # --- Factor 5: Branch Match (10 points) ---
+    # Factor 5: Branch match (10pts)
     branch_priorities = student.get("branch_priorities", [])
-    nit_branches = [
-        p.get("short_name", "")
-        for p in nit.get("mtech_programs", [])
-    ]
-
+    branch = programme.get("short_name", "")
     factor5 = 0
-    for branch in nit_branches:
-        if branch in branch_priorities:
-            idx = branch_priorities.index(branch)
-            if idx == 0:
-                factor5 = 10
-            elif idx == 1:
-                factor5 = 8
-            elif idx == 2:
-                factor5 = 6
-            else:
-                factor5 = 4
-            break
-    total += factor5
+    if branch in branch_priorities:
+        idx = branch_priorities.index(branch)
+        if idx == 0:
+            factor5 = 10
+        elif idx == 1:
+            factor5 = 8
+        elif idx == 2:
+            factor5 = 6
+        else:
+            factor5 = 4
 
-    # --- Home State Bonus ---
+    # Home state bonus
     home_nit = student.get("home_state_nit", "")
     home_bonus = 5 if nit.get("name") == home_nit else 0
-    total += home_bonus
 
-    # --- Category bucket ---
+    total = factor1 + factor2 + factor3 + factor4 + factor5 + home_bonus
+
+    # Bucket
     if probability >= 80:
         bucket = "Safe"
     elif probability >= 40:
@@ -129,11 +123,15 @@ def score_nit(nit, student):
     return {
         "nit_code": nit_code,
         "nit_name": nit.get("name"),
+        "programme_id": prog_id,
+        "branch": branch,
+        "branch_full": programme.get("official_name"),
         "location": nit.get("location"),
         "region": nit.get("region"),
         "nirf_rank": nirf,
         "predicted_closing_score": predicted_closing,
         "your_score": gate_score,
+        "category": cat_key,
         "admission_probability": probability,
         "sentiment_score": sentiment,
         "total_score": round(total, 1),
@@ -150,13 +148,10 @@ def score_nit(nit, student):
     }
 
 
-# ---------- Main Recommendation Endpoint ----------
-
 @router.get("/recommend")
 async def get_recommendations(token: str):
     db = get_db()
 
-    # Get student profile
     payload = decode_token(token)
     email = payload.get("sub")
 
@@ -166,10 +161,7 @@ async def get_recommendations(token: str):
     )
 
     if not student:
-        raise HTTPException(
-            status_code=404,
-            detail="Student not found"
-        )
+        raise HTTPException(status_code=404, detail="Student not found")
 
     if not student.get("profile_complete"):
         raise HTTPException(
@@ -177,21 +169,21 @@ async def get_recommendations(token: str):
             detail="Please complete your profile first"
         )
 
-    # Get all NITs
-    nits = await db["nits"].find(
-        {},
-        {"_id": 0}
-    ).to_list(length=100)
+    nits = await db["nits"].find({}, {"_id": 0}).to_list(length=100)
 
-    # Score every NIT
-    scored = [score_nit(nit, student) for nit in nits]
+    # Score every NIT × programme combination
+    scored = []
+    for nit in nits:
+        for programme in nit.get("mtech_programs", []):
+            result = score_nit_programme(nit, programme, student)
+            if result:  # None means not eligible (wrong GATE paper)
+                scored.append(result)
 
     # Sort by total score
     scored.sort(key=lambda x: x["total_score"], reverse=True)
 
-    # Split into buckets
-    safe = [n for n in scored if n["bucket"] == "Safe"]
-    target = [n for n in scored if n["bucket"] == "Target"]
+    safe      = [n for n in scored if n["bucket"] == "Safe"]
+    target    = [n for n in scored if n["bucket"] == "Target"]
     ambitious = [n for n in scored if n["bucket"] == "Ambitious"]
 
     return {
@@ -199,7 +191,8 @@ async def get_recommendations(token: str):
             "name": student.get("full_name"),
             "gate_score": student.get("gate_score"),
             "category": student.get("category"),
-            "domicile": student.get("domicile_state")
+            "domicile": student.get("domicile_state"),
+            "gate_paper": student.get("gate_paper")
         },
         "total_eligible": len(scored),
         "safe": safe,

@@ -11,56 +11,87 @@ def generate_preference_list(safe, target, ambitious, student):
     preferences = []
     counter = 1
     home_nit = student.get("home_state_nit", "")
+    branch_priorities = student.get("branch_priorities", [])
 
-    # Step 1: Add ambitious first (nothing to lose)
-    for nit in ambitious:
-        for program in nit.get("mtech_programs", [{"short_name": "CSE"}]):
-            preferences.append({
-                "preference_no": counter,
-                "nit_code": nit.get("nit_code"),
-                "nit_name": nit.get("nit_name"),
-                "branch": program.get("short_name", "CSE"),
-                "category": student.get("category", "UR"),
-                "bucket": "Ambitious",
-                "probability": nit.get("admission_probability"),
-                "note": "Dream choice — worth trying"
-            })
-            counter += 1
+    def get_branch_priority(branch):
+        if branch in branch_priorities:
+            return branch_priorities.index(branch)
+        return 999
 
-    # Step 2: Add target choices
-    for nit in target:
-        for program in nit.get("mtech_programs", [{"short_name": "CSE"}]):
-            preferences.append({
-                "preference_no": counter,
-                "nit_code": nit.get("nit_code"),
-                "nit_name": nit.get("nit_name"),
-                "branch": program.get("short_name", "CSE"),
-                "category": student.get("category", "UR"),
-                "bucket": "Target",
-                "probability": nit.get("admission_probability"),
-                "note": "Realistic target — good chances"
-            })
-            counter += 1
+    def sort_by_branch(items):
+        return sorted(
+            items,
+            key=lambda x: get_branch_priority(x.get("branch", ""))
+        )
 
-    # Step 3: Add safe choices last
-    for nit in safe:
+    # Ambitious first
+    for nit in sort_by_branch(ambitious):
+        preferences.append({
+            "preference_no": counter,
+            "nit_code": nit.get("nit_code"),
+            "nit_name": nit.get("nit_name"),
+            "branch": nit.get("branch"),
+            "branch_full": nit.get("branch_full"),
+            "category": student.get("category", "UR"),
+            "bucket": "Ambitious",
+            "probability": nit.get("admission_probability"),
+            "note": "Dream choice — worth including"
+        })
+        globals()['counter_ref'] = counter
+        preferences[-1]["preference_no"] = counter
+        counter += 1
+
+    # Target next
+    for nit in sort_by_branch(target):
+        preferences.append({
+            "preference_no": counter,
+            "nit_code": nit.get("nit_code"),
+            "nit_name": nit.get("nit_name"),
+            "branch": nit.get("branch"),
+            "branch_full": nit.get("branch_full"),
+            "category": student.get("category", "UR"),
+            "bucket": "Target",
+            "probability": nit.get("admission_probability"),
+            "note": "Realistic target — good chances"
+        })
+        counter += 1
+
+    # Safe last
+    for nit in sort_by_branch(safe):
         note = "Safety net — very likely"
         if nit.get("home_state"):
             note = "Home state safety net — almost certain"
-        for program in nit.get("mtech_programs", [{"short_name": "CSE"}]):
-            preferences.append({
-                "preference_no": counter,
-                "nit_code": nit.get("nit_code"),
-                "nit_name": nit.get("nit_name"),
-                "branch": program.get("short_name", "CSE"),
-                "category": student.get("category", "UR"),
-                "bucket": "Safe",
-                "probability": nit.get("admission_probability"),
-                "note": note
-            })
-            counter += 1
+        preferences.append({
+            "preference_no": counter,
+            "nit_code": nit.get("nit_code"),
+            "nit_name": nit.get("nit_name"),
+            "branch": nit.get("branch"),
+            "branch_full": nit.get("branch_full"),
+            "category": student.get("category", "UR"),
+            "bucket": "Safe",
+            "probability": nit.get("admission_probability"),
+            "note": note
+        })
+        counter += 1
 
     return preferences
+
+
+# ---------- Helper: Get scored results ----------
+
+async def get_scored_nits(student, db):
+    from app.routes.recommend import score_nit_programme
+    nits = await db["nits"].find({}, {"_id": 0}).to_list(length=100)
+
+    scored = []
+    for nit in nits:
+        for programme in nit.get("mtech_programs", []):
+            result = score_nit_programme(nit, programme, student)
+            if result:
+                scored.append(result)
+
+    scored.sort(key=lambda x: x["total_score"], reverse=True)
+    return scored
 
 
 # ---------- Part 1 Choice Filing ----------
@@ -86,24 +117,19 @@ async def get_part1_list(token: str):
             detail="Please complete your profile first"
         )
 
-    # Get recommendations
-    from app.routes.recommend import score_nit
-    nits = await db["nits"].find({}, {"_id": 0}).to_list(length=100)
-    scored = [score_nit(nit, student) for nit in nits]
-    scored.sort(key=lambda x: x["total_score"], reverse=True)
+    scored = await get_scored_nits(student, db)
 
-    safe = [n for n in scored if n["bucket"] == "Safe"]
-    target = [n for n in scored if n["bucket"] == "Target"]
+    safe      = [n for n in scored if n["bucket"] == "Safe"]
+    target    = [n for n in scored if n["bucket"] == "Target"]
     ambitious = [n for n in scored if n["bucket"] == "Ambitious"]
 
-    # Generate preference list
     preferences = generate_preference_list(
         safe, target, ambitious, student
     )
 
     return {
         "part": "Part 1 — Regular Rounds (R1, R2, R3)",
-        "instruction": "Submit this list ONCE before Round 1 starts. Same list is used for all 3 regular rounds.",
+        "instruction": "Submit this list ONCE before Round 1. Same list is used for all 3 regular rounds.",
         "student": {
             "name": student.get("full_name"),
             "gate_score": student.get("gate_score"),
@@ -111,7 +137,7 @@ async def get_part1_list(token: str):
         },
         "total_preferences": len(preferences),
         "preferences": preferences,
-        "why_this_order": "Ambitious choices are placed first because CCMT gives your highest eligible preference automatically. Safe choices at the bottom ensure you never go empty handed.",
+        "why_this_order": "Ambitious choices first — CCMT gives your highest eligible preference automatically. Safe choices at bottom ensure you never go empty handed.",
         "important_note": f"Your home state NIT ({student.get('home_state_nit', 'N/A')}) is your safety net. Never leave counselling without it in your list."
     }
 
@@ -133,16 +159,10 @@ async def get_part2_list(token: str, current_allocation: str):
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
 
-    # Get recommendations
-    from app.routes.recommend import score_nit
-    nits = await db["nits"].find({}, {"_id": 0}).to_list(length=100)
-    scored = [score_nit(nit, student) for nit in nits]
-    scored.sort(key=lambda x: x["total_score"], reverse=True)
+    scored = await get_scored_nits(student, db)
 
-    # Remove current allocation from ambitious
-    # Focus on upgrades only
-    safe = [n for n in scored if n["bucket"] == "Safe"]
-    target = [n for n in scored if n["bucket"] == "Target"]
+    safe      = [n for n in scored if n["bucket"] == "Safe"]
+    target    = [n for n in scored if n["bucket"] == "Target"]
     ambitious = [n for n in scored if n["bucket"] == "Ambitious"]
 
     preferences = generate_preference_list(
@@ -151,7 +171,7 @@ async def get_part2_list(token: str, current_allocation: str):
 
     return {
         "part": "Part 2 — Special Rounds (SR1, SR2)",
-        "instruction": "Submit this NEW list before Special Round 1. This is different from Part 1.",
+        "instruction": "Submit this NEW list before Special Round 1. Different from Part 1.",
         "current_allocation": current_allocation,
         "student": {
             "name": student.get("full_name"),
@@ -160,7 +180,7 @@ async def get_part2_list(token: str, current_allocation: str):
         },
         "total_preferences": len(preferences),
         "preferences": preferences,
-        "important_note": f"You currently have {current_allocation}. This list focuses on upgrading your seat in Special Rounds."
+        "important_note": f"You currently have {current_allocation}. This list helps you upgrade in Special Rounds."
     }
 
 
@@ -185,18 +205,19 @@ async def lock_float_slide(
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
 
-    gate_score = student.get("gate_score", 0)
-    category = student.get("category", "UR")
-
-    # Find target NIT probability
-    from app.routes.recommend import score_nit
+    from app.routes.recommend import score_nit_programme
     nits = await db["nits"].find({}, {"_id": 0}).to_list(length=100)
 
     target_data = None
+    best_prob = 0
+
     for nit in nits:
         if nit.get("name") == target_nit or nit.get("nit_code") == target_nit:
-            target_data = score_nit(nit, student)
-            break
+            for programme in nit.get("mtech_programs", []):
+                result = score_nit_programme(nit, programme, student)
+                if result and result.get("admission_probability", 0) > best_prob:
+                    best_prob = result.get("admission_probability", 0)
+                    target_data = result
 
     if not target_data:
         return {
@@ -206,7 +227,6 @@ async def lock_float_slide(
 
     probability = target_data.get("admission_probability", 0)
 
-    # Decision logic
     if probability >= 70:
         recommendation = "FLOAT"
         reason = f"High chance ({probability}%) of getting {target_nit}. Float safely — you keep {current_allocation} as backup."
@@ -221,7 +241,7 @@ async def lock_float_slide(
         risk = "HIGH"
     else:
         recommendation = "LOCK"
-        reason = f"Very low chance ({probability}%) of getting {target_nit}. Lock {current_allocation} immediately."
+        reason = f"Very low chance ({probability}%). Lock {current_allocation} immediately."
         risk = "VERY HIGH"
 
     return {

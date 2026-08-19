@@ -19,7 +19,18 @@ const STEPS = [
 ]
 
 const CATEGORIES = ['UR', 'OBC', 'SC', 'ST', 'EWS']
-const BRANCHES = ['CSE', 'AI', 'DS', 'IT', 'ECE', 'EE']
+const BRANCHES = [
+  { code: 'CSE', name: 'Computer Science & Engineering' },
+  { code: 'AI',  name: 'Artificial Intelligence' },
+  { code: 'DS',  name: 'Data Science & Engineering' },
+  { code: 'IT',  name: 'Information Technology' },
+  { code: 'ML',  name: 'Machine Learning' },
+  { code: 'CY',  name: 'Cyber Security' },
+  { code: 'SE',  name: 'Software Engineering' },
+  { code: 'DE',  name: 'Data Engineering' },
+  { code: 'IS',  name: 'Information Security' },
+  { code: 'HCI', name: 'Human Computer Interaction' },
+]
 const REGIONS = ['East India', 'West India', 'North India', 'South India', 'Any']
 
 export default function Profile() {
@@ -494,16 +505,17 @@ export default function Profile() {
               <div className="flex gap-2 flex-wrap">
                 {BRANCHES.map(branch => (
                   <button
-                    key={branch}
+                    key={branch.code}
                     type="button"
-                    onClick={() => toggleBranch(branch)}
-                    className={`px-4 py-2 rounded-xl border text-sm font-medium transition-all ${
-                      branches.priorities.includes(branch)
+                    onClick={() => toggleBranch(branch.code)}
+                    className={`px-3 py-2 rounded-xl border text-xs font-medium transition-all text-left ${
+                      branches.priorities.includes(branch.code)
                         ? 'bg-blue-900 text-white border-blue-900'
                         : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
                     }`}
                   >
-                    {branch}
+                    <span className="block font-semibold">{branch.code}</span>
+                    <span className="block text-xs opacity-75">{branch.name}</span>
                   </button>
                 ))}
               </div>
@@ -513,11 +525,14 @@ export default function Profile() {
                   <p className="text-xs text-blue-400 mb-2 font-medium">
                     Your priority order:
                   </p>
-                  {branches.priorities.map((b, i) => (
-                    <p key={b} className="text-sm text-blue-800">
-                      {i + 1}. {b}
-                    </p>
-                  ))}
+                  {branches.priorities.map((b, i) => {
+                    const found = BRANCHES.find(br => br.code === b)
+                    return (
+                      <p key={b} className="text-sm text-blue-800">
+                        {i + 1}. {b} — {found ? found.name : b}
+                      </p>
+                    )
+                  })}
                 </div>
               )}
 

@@ -18,8 +18,26 @@ nits_data = [
                 "program_id": "NITSLR_CSE",
                 "official_name": "M.Tech in Computer Science & Engineering",
                 "short_name": "CSE",
-                "gate_papers": ["CS"],
-                "seats": {"UR": 9, "OBC": 5, "SC": 2, "ST": 1, "EWS": 1},
+                "gate_papers": ["CS", "DA"],
+                "seats": {"UR": 14, "OBC": 8, "SC": 4, "ST": 2, "EWS": 2},
+                "fee_annual": 70000,
+                "has_hostel": True
+            },
+            {
+                "program_id": "NITSLR_AI",
+                "official_name": "M.Tech in Artificial Intelligence",
+                "short_name": "AI",
+                "gate_papers": ["CS", "DA"],
+                "seats": {"UR": 11, "OBC": 6, "SC": 3, "ST": 2, "EWS": 3},
+                "fee_annual": 70000,
+                "has_hostel": True
+            },
+            {
+                "program_id": "NITSLR_DS",
+                "official_name": "M.Tech in Data Science & Engineering",
+                "short_name": "DS",
+                "gate_papers": ["CS", "DA"],
+                "seats": {"UR": 7, "OBC": 4, "SC": 2, "ST": 1, "EWS": 1},
                 "fee_annual": 70000,
                 "has_hostel": True
             }
@@ -39,7 +57,16 @@ nits_data = [
                 "official_name": "M.Tech in Computer Science & Engineering",
                 "short_name": "CSE",
                 "gate_papers": ["CS"],
-                "seats": {"UR": 10, "OBC": 5, "SC": 3, "ST": 1, "EWS": 1},
+                "seats": {"UR": 11, "OBC": 6, "SC": 3, "ST": 2, "EWS": 3},
+                "fee_annual": 110000,
+                "has_hostel": True
+            },
+            {
+                "program_id": "NITRK_AI",
+                "official_name": "M.Tech in Artificial Intelligence",
+                "short_name": "AI",
+                "gate_papers": ["CS", "DA"],
+                "seats": {"UR": 9, "OBC": 5, "SC": 3, "ST": 1, "EWS": 2},
                 "fee_annual": 110000,
                 "has_hostel": True
             }
@@ -62,6 +89,15 @@ nits_data = [
                 "seats": {"UR": 9, "OBC": 5, "SC": 2, "ST": 1, "EWS": 1},
                 "fee_annual": 90000,
                 "has_hostel": True
+            },
+            {
+                "program_id": "NITT_DS",
+                "official_name": "M.Tech in Data Science & Engineering",
+                "short_name": "DS",
+                "gate_papers": ["CS", "DA"],
+                "seats": {"UR": 8, "OBC": 4, "SC": 2, "ST": 1, "EWS": 1},
+                "fee_annual": 90000,
+                "has_hostel": True
             }
         ]
     },
@@ -80,6 +116,24 @@ nits_data = [
                 "short_name": "CSE",
                 "gate_papers": ["CS"],
                 "seats": {"UR": 9, "OBC": 5, "SC": 2, "ST": 1, "EWS": 1},
+                "fee_annual": 95000,
+                "has_hostel": True
+            },
+            {
+                "program_id": "NITW_AI",
+                "official_name": "M.Tech in Artificial Intelligence",
+                "short_name": "AI",
+                "gate_papers": ["CS", "DA"],
+                "seats": {"UR": 8, "OBC": 4, "SC": 2, "ST": 1, "EWS": 1},
+                "fee_annual": 95000,
+                "has_hostel": True
+            },
+            {
+                "program_id": "NITW_DS",
+                "official_name": "M.Tech in Data Science & Engineering",
+                "short_name": "DS",
+                "gate_papers": ["CS", "DA"],
+                "seats": {"UR": 7, "OBC": 4, "SC": 2, "ST": 1, "EWS": 1},
                 "fee_annual": 95000,
                 "has_hostel": True
             }
@@ -102,6 +156,15 @@ nits_data = [
                 "seats": {"UR": 9, "OBC": 5, "SC": 2, "ST": 1, "EWS": 1},
                 "fee_annual": 85000,
                 "has_hostel": True
+            },
+            {
+                "program_id": "NITC_IT",
+                "official_name": "M.Tech in Information Technology",
+                "short_name": "IT",
+                "gate_papers": ["CS", "DA"],
+                "seats": {"UR": 7, "OBC": 4, "SC": 2, "ST": 1, "EWS": 1},
+                "fee_annual": 85000,
+                "has_hostel": True
             }
         ]
     }
@@ -110,10 +173,9 @@ nits_data = [
 async def seed():
     client = AsyncIOMotorClient(MONGODB_URL)
     db = client[DATABASE_NAME]
-
     await db["nits"].delete_many({})
     result = await db["nits"].insert_many(nits_data)
-    print(f"✅ Seeded {len(result.inserted_ids)} NITs into ascent_db")
+    print(f"✅ Seeded {len(result.inserted_ids)} NITs with multiple programmes")
     client.close()
 
 if __name__ == "__main__":

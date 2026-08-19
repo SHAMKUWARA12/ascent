@@ -5,6 +5,7 @@ import { getRecommendations, getChoiceFilingPart1 } from '../services/api'
 
 // ---------- NIT Card ----------
 function NITCard({ nit, rank }) {
+  const navigate = useNavigate()
   const [expanded, setExpanded] = useState(false)
 
   const bucketColor = {
@@ -26,7 +27,10 @@ function NITCard({ nit, rank }) {
   }
 
   return (
-    <div className={`border rounded-2xl p-4 mb-3 ${bucketColor[nit.bucket]}`}>
+    <div
+      className={`border rounded-2xl p-4 mb-3 ${bucketColor[nit.bucket]} cursor-pointer hover:shadow-md transition-shadow`}
+      onClick={() => navigate(`/nit/${nit.nit_code}`)}
+    >
 
       {/* Top row */}
       <div className="flex items-start justify-between gap-3">
@@ -39,6 +43,9 @@ function NITCard({ nit, rank }) {
               <h3 className="font-semibold text-gray-900 text-sm">
                 {nit.nit_name}
               </h3>
+              <p className="text-xs text-blue-600 font-medium mt-0.5">
+                {nit.branch} — {nit.branch_full}
+              </p>
               {nit.home_state && (
                 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
                   🏠 Home State
