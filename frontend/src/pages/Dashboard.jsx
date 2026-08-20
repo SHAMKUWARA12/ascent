@@ -333,7 +333,8 @@ export default function Dashboard() {
         <div className="flex gap-6">
           {[
             { id: 'recommendations', label: 'Recommendations' },
-            { id: 'choice-filing', label: 'Choice Filing' }
+            { id: 'choice-filing', label: 'Choice Filing' },
+            { id: 'advisor', label: 'Lock/Float/Slide' }
           ].map(tab => (
             <button
               key={tab.id}
@@ -402,6 +403,25 @@ export default function Dashboard() {
         {/* Choice Filing Tab */}
         {activeTab === 'choice-filing' && (
           <ChoiceFilingList token={token} />
+        )}
+
+        {/* Advisor Tab */}
+        {activeTab === 'advisor' && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-6 text-center">
+            <h2 className="font-semibold text-gray-800 mb-2">
+              Lock / Float / Slide Advisor
+            </h2>
+            <p className="text-gray-400 text-sm mb-4">
+              Got a round result? Get data-driven advice on
+              what to do next.
+            </p>
+            <button
+              onClick={() => navigate('/advisor')}
+              className="bg-blue-900 text-white px-6 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-800"
+            >
+              Open Advisor
+            </button>
+          </div>
         )}
 
       </div>

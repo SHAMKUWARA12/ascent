@@ -190,7 +190,9 @@ async def get_part2_list(token: str, current_allocation: str):
 async def lock_float_slide(
     token: str,
     current_allocation: str,
-    target_nit: str
+    current_branch: str,
+    target_nit: str,
+    target_branch: str
 ):
     db = get_db()
 
@@ -208,12 +210,20 @@ async def lock_float_slide(
     from app.routes.recommend import score_nit_programme
     nits = await db["nits"].find({}, {"_id": 0}).to_list(length=100)
 
+    # Check if target is same NIT (slide scenario)
+    same_nit = current_allocation.lower() == target_nit.lower()
+
     target_data = None
     best_prob = 0
 
     for nit in nits:
-        if nit.get("name") == target_nit or nit.get("nit_code") == target_nit:
+        if (nit.get("name", "").lower() == target_nit.lower() or
+            nit.get("nit_code", "").lower() == target_nit.lower()):
             for programme in nit.get("mtech_programs", []):
+                # If branch specified match it
+                if target_branch:
+                    if programme.get("short_name", "").lower() != target_branch.lower():
+                        continue
                 result = score_nit_programme(nit, programme, student)
                 if result and result.get("admission_probability", 0) > best_prob:
                     best_prob = result.get("admission_probability", 0)
@@ -222,50 +232,65 @@ async def lock_float_slide(
     if not target_data:
         return {
             "recommendation": "LOCK",
-            "reason": f"Target NIT {target_nit} not found. Keep your current allocation safely."
+            "reason": f"Target NIT {target_nit} {target_branch} not found. Keep your current allocation safely."
         }
 
     probability = target_data.get("admission_probability", 0)
+    target_display = f"{target_nit} {target_branch}".strip()
 
-    if probability >= 70:
-        recommendation = "FLOAT"
-        reason = f"High chance ({probability}%) of getting {target_nit}. Float safely — you keep {current_allocation} as backup."
-        risk = "LOW"
-    elif probability >= 40:
-        recommendation = "FLOAT"
-        reason = f"Moderate chance ({probability}%) of getting {target_nit}. Floating is worth it — {current_allocation} stays safe."
-        risk = "MEDIUM"
-    elif probability >= 20:
-        recommendation = "LOCK"
-        reason = f"Low chance ({probability}%) of getting {target_nit}. Better to lock {current_allocation} and secure it."
-        risk = "HIGH"
+    # Determine recommendation
+    if same_nit:
+        # Same NIT different branch = SLIDE scenario
+        if probability >= 60:
+            recommendation = "SLIDE"
+            reason = f"Good chance ({probability}%) of getting {target_display} at the same NIT. Slide is worth trying — you upgrade your branch within {target_nit}."
+            risk = "MEDIUM"
+        else:
+            recommendation = "LOCK"
+            reason = f"Low chance ({probability}%) of getting {target_display}. Better to lock {current_allocation} {current_branch} and secure your current branch."
+            risk = "HIGH"
     else:
-        recommendation = "LOCK"
-        reason = f"Very low chance ({probability}%). Lock {current_allocation} immediately."
-        risk = "VERY HIGH"
+        # Different NIT = FLOAT scenario
+        if probability >= 70:
+            recommendation = "FLOAT"
+            reason = f"High chance ({probability}%) of getting {target_display}. Float safely — you keep {current_allocation} {current_branch} as backup."
+            risk = "LOW"
+        elif probability >= 40:
+            recommendation = "FLOAT"
+            reason = f"Moderate chance ({probability}%) of getting {target_display}. Floating is worth it — {current_allocation} {current_branch} stays safe."
+            risk = "MEDIUM"
+        else:
+            recommendation = "LOCK"
+            reason = f"Low chance ({probability}%). Better to lock {current_allocation} {current_branch} and secure it."
+            risk = "HIGH"
 
     return {
         "current_allocation": current_allocation,
+        "current_branch": current_branch,
         "target_nit": target_nit,
+        "target_branch": target_branch,
         "target_probability": probability,
+        "same_nit": same_nit,
         "recommendation": recommendation,
         "risk_level": risk,
         "reason": reason,
         "options": {
             "LOCK": {
-                "description": f"Accept {current_allocation} and exit counselling",
-                "pro": "100% secure seat",
-                "con": f"Lose chance at {target_nit}"
+                "description": f"Accept {current_allocation} {current_branch} and exit counselling",
+                "pro": "100% secure seat — no risk at all",
+                "con": f"Lose chance at {target_display}"
             },
             "FLOAT": {
-                "description": f"Keep {current_allocation} and stay in counselling",
-                "pro": f"Still have {current_allocation} as safety + chance at upgrade",
-                "con": "Small fee to pay for seat acceptance"
+                "description": f"Keep {current_allocation} {current_branch} and stay in counselling",
+                "pro": f"Still have {current_allocation} {current_branch} as safety + chance at upgrade to better NIT",
+                "con": "Small seat acceptance fee required",
+                "applicable": not same_nit
             },
             "SLIDE": {
-                "description": f"Release {current_allocation} to try for better",
-                "pro": "Higher preferences still possible",
-                "con": f"Risk losing {current_allocation} permanently"
+                "description": f"Release {current_branch} at {current_allocation} to try for {target_display} at same NIT",
+                "pro": f"Upgrade to better branch ({target_display}) within same NIT",
+                "con": f"Risk losing {current_branch} at {current_allocation} permanently if {target_display} cutoff rises",
+                "applicable": same_nit
             }
         }
     }
