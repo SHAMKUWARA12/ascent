@@ -388,7 +388,7 @@ async def advisor(
     # Target is a better preferred branch at same NIT
     # (target preference no < current preference no)
     #
-    # When to recommend FREEZE:
+    # When to recommend LOCK:
     # Target branch is lower/equal priority → no benefit
     # ══════════════════════════════════════════════════════
     if same_nit:
@@ -406,14 +406,14 @@ async def advisor(
 
         # Target branch is lower or equal priority
         if target_idx >= current_idx:
-            recommendation = "FREEZE"
+            recommendation = "LOCK"
             risk = "NONE"
             reason = (
                 f"Your current branch ({current_branch}) is already "
                 f"at a higher or equal priority compared to your "
                 f"target ({target_branch}) at {current_nit}. "
                 f"Sliding to a lower priority branch makes no sense. "
-                f"FREEZE your current seat — you already have the better option."
+                f"LOCK your current seat — you already have the better option."
             )
         else:
             # Target branch is higher priority → SLIDE is appropriate
@@ -463,7 +463,7 @@ async def advisor(
         }
 
     # ══════════════════════════════════════════════════════
-    # DIFFERENT NIT → Recommend FLOAT or FREEZE
+    # DIFFERENT NIT → Recommend FLOAT or LOCK
     #
     # FLOAT: considered for ALL better-preferred choices
     # across ANY institute. Safe — retain current if nothing
@@ -473,7 +473,7 @@ async def advisor(
     # Target is a better NIT or better branch at different NIT
     # (target preference no < current preference no)
     #
-    # When to recommend FREEZE:
+    # When to recommend LOCK:
     # Target is worse NIT with worse/equal branch
     # → Current seat is already better
     # ══════════════════════════════════════════════════════

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { getAdvisor } from '../services/api'
@@ -31,6 +31,17 @@ export default function Advisor() {
     target_nit: '',
     target_branch: ''
   })
+
+  useEffect(() => {
+    if (
+      form.current_nit === form.target_nit &&
+      form.current_branch === form.target_branch &&
+      form.target_branch !== ''
+    ) {
+      setForm(prev => ({ ...prev, target_branch: '' }))
+    }
+  }, [form.current_nit, form.current_branch])
+
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
