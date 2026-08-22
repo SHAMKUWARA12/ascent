@@ -41,6 +41,11 @@ export const getRecommendations = (token) =>
 export const getChoiceFilingPart1 = (token) =>
   API.get(`/choice-filing/part1?token=${token}`)
 
+export const getChoiceFilingPart2 = (token, currentAllocation) =>
+  API.post(
+    `/choice-filing/part2?token=${encodeURIComponent(token)}&current_allocation=${encodeURIComponent(currentAllocation)}`
+  )
+
 // ---------- Advisor ----------
 export const getAdvisor = (
   token, currentNIT, currentBranch, targetNIT, targetBranch

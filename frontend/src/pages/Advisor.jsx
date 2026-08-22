@@ -210,6 +210,7 @@ export default function Advisor() {
                   <select
                     value={form.target_branch}
                     onChange={e => setForm({...form, target_branch: e.target.value})}
+                    // required
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
                   >
                     <option value="">Any branch</option>

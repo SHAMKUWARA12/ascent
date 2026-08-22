@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getRecommendations, getChoiceFilingPart1 } from '../services/api'
+import {
+  getRecommendations,
+  getChoiceFilingPart1,
+  getChoiceFilingPart2
+} from '../services/api'
 
 // ---------- NIT Card ----------
 function NITCard({ nit, rank }) {
@@ -123,15 +127,84 @@ function NITCard({ nit, rank }) {
   )
 }
 
+// ── Shared list renderer ──────────────────────────────────
+
+function renderList(list) {
+  return (
+    <>
+      {list.important_note && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 text-xs text-amber-800">
+          ⚠️ {list.important_note}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1 mb-3">
+        {(list.preferences || []).map(p => (
+          <div
+            key={p.preference_no}
+            className="flex items-center gap-3 py-2 px-3 rounded-xl hover:bg-gray-50"
+          >
+            <span className="text-xs font-bold text-gray-400 w-6 flex-shrink-0">
+              {p.preference_no}
+            </span>
+            <div className="flex-1 min-w-0">
+              <span className="text-sm font-medium text-gray-800">
+                {p.nit_name}
+              </span>
+              <span className="text-xs text-gray-400 ml-2">
+                {p.branch} · {p.category}
+              </span>
+            </div>
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${
+              p.bucket === 'Safe'
+                ? 'bg-green-100 text-green-700'
+                : p.bucket === 'Target'
+                ? 'bg-amber-100 text-amber-700'
+                : 'bg-red-100 text-red-600'
+            }`}>
+              {p.probability}%
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {list.why_this_order && (
+        <p className="text-xs text-gray-400 leading-relaxed">
+          {list.why_this_order}
+        </p>
+      )}
+    </>
+  )
+}
+
+
 // ---------- Choice Filing List ----------
 function ChoiceFilingList({ token }) {
+  const [activePart, setActivePart] = useState('part1')
   const [list, setList] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [currentAllocation, setCurrentAllocation] = useState('')
+  const [showInput, setShowInput] = useState(false)
 
-  const fetchList = async () => {
+  const fetchPart1 = async () => {
     setLoading(true)
+    setList(null)
     try {
       const res = await getChoiceFilingPart1(token)
+      setList(res.data)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchPart2 = async () => {
+    if (!currentAllocation.trim()) return
+    setLoading(true)
+    setList(null)
+    try {
+      const res = await getChoiceFilingPart2(token, currentAllocation)
       setList(res.data)
     } catch (err) {
       console.error(err)
@@ -148,80 +221,160 @@ function ChoiceFilingList({ token }) {
       )
       .join('\n')
     navigator.clipboard.writeText(text)
-    alert('Choice filing list copied to clipboard!')
+    alert('Choice filing list copied!')
+  }
+
+  const switchPart = (part) => {
+    setActivePart(part)
+    setList(null)
+    setShowInput(false)
+    setCurrentAllocation('')
   }
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="font-semibold text-gray-900">
-            Part 1 Choice Filing List
-          </h2>
-          <p className="text-xs text-gray-400 mt-0.5">
-            Regular Rounds — R1, R2, R3
-          </p>
-        </div>
-        {!list && (
+
+      {/* Part tabs */}
+      <div className="flex gap-2 mb-5">
+        {[
+          { id: 'part1', label: 'Part 1', sub: 'Regular Rounds R1 R2 R3' },
+          { id: 'part2', label: 'Part 2', sub: 'Special Rounds SR1 SR2' },
+        ].map(p => (
           <button
-            onClick={fetchList}
-            disabled={loading}
-            className="bg-blue-900 text-white text-sm px-4 py-2 rounded-xl hover:bg-blue-800 disabled:opacity-50"
+            key={p.id}
+            onClick={() => switchPart(p.id)}
+            className={`flex-1 py-2.5 rounded-xl border text-left px-3 transition-all ${
+              activePart === p.id
+                ? 'bg-blue-900 border-blue-900'
+                : 'bg-white border-gray-200 hover:border-blue-300'
+            }`}
           >
-            {loading ? 'Generating...' : 'Generate List'}
+            <p className={`text-sm font-semibold ${
+              activePart === p.id ? 'text-white' : 'text-gray-800'
+            }`}>
+              {p.label}
+            </p>
+            <p className={`text-xs mt-0.5 ${
+              activePart === p.id ? 'text-blue-200' : 'text-gray-400'
+            }`}>
+              {p.sub}
+            </p>
           </button>
-        )}
-        {list && (
-          <button
-            onClick={copyList}
-            className="bg-green-700 text-white text-sm px-4 py-2 rounded-xl hover:bg-green-600"
-          >
-            Copy List
-          </button>
-        )}
+        ))}
       </div>
 
-      {list && (
+      {/* Part 1 */}
+      {activePart === 'part1' && (
         <>
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs text-amber-800">
-            ⚠️ {list.important_note}
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="font-semibold text-gray-900 text-sm">
+                Part 1 Preference List
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Submit ONCE before Round 1. Valid for R1, R2, R3.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {!list && (
+                <button
+                  onClick={fetchPart1}
+                  disabled={loading}
+                  className="bg-blue-900 text-white text-xs px-3 py-2 rounded-xl hover:bg-blue-800 disabled:opacity-50"
+                >
+                  {loading ? 'Generating...' : 'Generate List'}
+                </button>
+              )}
+              {list && (
+                <button
+                  onClick={copyList}
+                  className="bg-green-700 text-white text-xs px-3 py-2 rounded-xl hover:bg-green-600"
+                >
+                  Copy List
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="flex flex-col gap-1">
-            {list.preferences.map(p => (
-              <div
-                key={p.preference_no}
-                className="flex items-center gap-3 py-2 px-3 rounded-xl hover:bg-gray-50"
-              >
-                <span className="text-xs font-bold text-gray-400 w-6">
-                  {p.preference_no}
-                </span>
-                <div className="flex-1">
-                  <span className="text-sm font-medium text-gray-800">
-                    {p.nit_name}
-                  </span>
-                  <span className="text-xs text-gray-400 ml-2">
-                    {p.branch} · {p.category}
-                  </span>
-                </div>
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                  p.bucket === 'Safe'
-                    ? 'bg-green-100 text-green-700'
-                    : p.bucket === 'Target'
-                    ? 'bg-amber-100 text-amber-700'
-                    : 'bg-red-100 text-red-600'
-                }`}>
-                  {p.probability}%
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <p className="text-xs text-gray-400 mt-4 leading-relaxed">
-            {list.why_this_order}
-          </p>
+          {list && renderList(list)}
         </>
       )}
+
+      {/* Part 2 */}
+      {activePart === 'part2' && (
+        <>
+          <div className="mb-4">
+            <h2 className="font-semibold text-gray-900 text-sm mb-1">
+              Part 2 Preference List
+            </h2>
+            <p className="text-xs text-gray-400 mb-3">
+              Submit a NEW list before Special Round 1.
+              Different from Part 1. Based on your current allocation.
+            </p>
+
+            {/* Info box */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-3 text-xs text-blue-800">
+              <p className="font-medium mb-1">When to use Part 2:</p>
+              <p>After Regular Rounds (R1, R2, R3) are over and you
+                have a seat allotted. Special Rounds give you another
+                chance to upgrade. Submit a fresh list for SR1 and SR2.</p>
+            </div>
+
+            {/* Current allocation input */}
+            {!list && (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-700 mb-1 block">
+                    Your current allocation (from Regular Rounds)
+                  </label>
+                  <input
+                    type="text"
+                    value={currentAllocation}
+                    onChange={e => setCurrentAllocation(e.target.value)}
+                    placeholder="e.g. NIT Silchar — CSE"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Enter the NIT and branch you were allocated in Round 3
+                  </p>
+                </div>
+                <button
+                  onClick={fetchPart2}
+                  disabled={loading || !currentAllocation.trim()}
+                  className="bg-blue-900 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-800 disabled:opacity-50 font-medium"
+                >
+                  {loading ? 'Generating...' : 'Generate Part 2 List'}
+                </button>
+              </div>
+            )}
+
+            {list && (
+              <div className="flex items-center justify-between mb-3">
+                <div className="bg-gray-50 rounded-xl px-3 py-2 text-xs text-gray-600">
+                  Current allocation: <strong>{currentAllocation}</strong>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setList(null); setCurrentAllocation('') }}
+                    className="text-xs text-gray-400 hover:text-gray-600 px-2"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    onClick={copyList}
+                    className="bg-green-700 text-white text-xs px-3 py-2 rounded-xl hover:bg-green-600"
+                  >
+                    Copy List
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {list && renderList(list)}
+        </>
+      )}
+
     </div>
   )
 }
