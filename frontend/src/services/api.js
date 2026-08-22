@@ -42,9 +42,11 @@ export const getChoiceFilingPart1 = (token) =>
   API.get(`/choice-filing/part1?token=${token}`)
 
 // ---------- Advisor ----------
-export const getAdvisor = (token, current, currentBranch, target, targetBranch) =>
+export const getAdvisor = (
+  token, currentNIT, currentBranch, targetNIT, targetBranch
+) =>
   API.post(
-    `/advisor?token=${token}&current_allocation=${encodeURIComponent(current)}&current_branch=${encodeURIComponent(currentBranch)}&target_nit=${encodeURIComponent(target)}&target_branch=${encodeURIComponent(targetBranch)}`
+    `/advisor?token=${encodeURIComponent(token)}&current_nit=${encodeURIComponent(currentNIT)}&current_branch=${encodeURIComponent(currentBranch)}&target_nit=${encodeURIComponent(targetNIT)}&target_branch=${encodeURIComponent(targetBranch)}`
   )
 
 // ---------- Update Profile ----------

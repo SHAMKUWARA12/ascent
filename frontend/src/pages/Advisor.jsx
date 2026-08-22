@@ -52,7 +52,8 @@ export default function Advisor() {
       setResult(res.data)
     } catch (err) {
       setError(
-        err.response?.data?.detail || 'Something went wrong. Try again.'
+        err.response?.data?.detail ||
+        'Something went wrong. Try again.'
       )
     } finally {
       setLoading(false)
@@ -201,9 +202,20 @@ export default function Advisor() {
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
                   >
                     <option value="">Any branch</option>
-                    {BRANCH_OPTIONS.map(b => (
-                      <option key={b.code} value={b.code}>{b.code}</option>
-                    ))}
+                    {BRANCH_OPTIONS.map(b => {
+                      const isSameCombo =
+                        form.current_nit === form.target_nit &&
+                        b.code === form.current_branch
+                      return (
+                        <option
+                          key={b.code}
+                          value={b.code}
+                          disabled={isSameCombo}
+                        >
+                          {b.code}{isSameCombo ? ' (current seat)' : ''}
+                        </option>
+                      )
+                    })}
                   </select>
                 </div>
               </div>
