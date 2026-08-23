@@ -184,8 +184,10 @@ function ChoiceFilingList({ token }) {
   const [list, setList] = useState(null)
   const [loading, setLoading] = useState(false)
   const [currentAllocation, setCurrentAllocation] = useState('')
-  const [showInput, setShowInput] = useState(false)
   const [gotSeat, setGotSeat] = useState(null)
+  const [frozenAt, setFrozenAt] = useState(null)
+
+  // ── API calls ────────────────────────────────────────────
 
   const fetchPart1 = async () => {
     setLoading(true)
@@ -201,11 +203,13 @@ function ChoiceFilingList({ token }) {
   }
 
   const fetchPart2 = async () => {
-    if (!currentAllocation.trim()) return
     setLoading(true)
     setList(null)
     try {
-      const res = await getChoiceFilingPart2(token, currentAllocation)
+      const res = await getChoiceFilingPart2(
+        token,
+        currentAllocation || 'No seat'
+      )
       setList(res.data)
     } catch (err) {
       console.error(err)
@@ -216,7 +220,7 @@ function ChoiceFilingList({ token }) {
 
   const copyList = () => {
     if (!list) return
-    const text = list.preferences
+    const text = (list.preferences || [])
       .map(p =>
         `${p.preference_no}. ${p.nit_name} | ${p.branch} | ${p.category} (${p.probability}%)`
       )
@@ -225,48 +229,191 @@ function ChoiceFilingList({ token }) {
     alert('Choice filing list copied!')
   }
 
+  // ── Tab switching ────────────────────────────────────────
+
   const switchPart = (part) => {
+    if (frozenAt === 'part2' && part === 'part3') return
     setActivePart(part)
     setList(null)
-    setShowInput(false)
     setCurrentAllocation('')
     setGotSeat(null)
   }
 
+  // ── Tab disabled check ───────────────────────────────────
+
+  const isTabDisabled = (part) => {
+    if (frozenAt === 'part2' && part === 'part3') return true
+    return false
+  }
+
+  // ── NIT + Branch dropdowns (reused in Part 2 and Part 3) ─
+
+  const NITOptions = [
+    'NIT Silchar', 'NIT Rourkela', 'NIT Trichy',
+    'NIT Warangal', 'NIT Calicut'
+  ]
+
+  const BranchOptions = [
+    'CSE', 'AI', 'DS', 'IT',
+    'ML', 'CY', 'SE', 'DE', 'IS', 'HCI'
+  ]
+
+  const AllocationDropdowns = () => (
+    <div className="flex gap-2">
+      <select
+        value={currentAllocation.split('—')[0]?.trim() || ''}
+        onChange={e => {
+          const nit = e.target.value
+          const branch = currentAllocation.split('—')[1]?.trim() || ''
+          setCurrentAllocation(branch ? `${nit} — ${branch}` : nit)
+        }}
+        className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
+      >
+        <option value="">Select NIT</option>
+        {NITOptions.map(n => (
+          <option key={n} value={n}>{n}</option>
+        ))}
+      </select>
+      <select
+        value={currentAllocation.split('—')[1]?.trim() || ''}
+        onChange={e => {
+          const nit = currentAllocation.split('—')[0]?.trim() || ''
+          setCurrentAllocation(`${nit} — ${e.target.value}`)
+        }}
+        className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
+      >
+        <option value="">Select Branch</option>
+        {BranchOptions.map(b => (
+          <option key={b} value={b}>{b}</option>
+        ))}
+      </select>
+    </div>
+  )
+
+  // ── Congrats message ─────────────────────────────────────
+
+  const CongratsMessage = ({ frozenPart }) => (
+    <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-center mt-2">
+      <p className="text-3xl mb-2">🎉</p>
+      <p className="font-semibold text-green-800 mb-2">
+        Congratulations!
+      </p>
+      <p className="text-sm text-green-700 leading-relaxed">
+        You froze your seat in{' '}
+        {frozenPart === 'part2'
+          ? 'Special Rounds'
+          : 'National Round'}.
+        Your admission is confirmed.
+        {frozenPart === 'part2'
+          ? ' National Round is now locked for you.'
+          : ''}
+      </p>
+      <p className="text-xs text-green-600 mt-3">
+        Report to your allotted institute as per
+        their admission schedule.
+      </p>
+    </div>
+  )
+
+  // ── Render list ──────────────────────────────────────────
+
+  const renderList = (data) => (
+    <>
+      {data.important_note && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 text-xs text-amber-800">
+          ⚠️ {data.important_note}
+        </div>
+      )}
+      <div className="flex flex-col gap-1 mb-3">
+        {(data.preferences || []).map(p => (
+          <div
+            key={p.preference_no}
+            className="flex items-center gap-3 py-2 px-3 rounded-xl hover:bg-gray-50"
+          >
+            <span className="text-xs font-bold text-gray-400 w-6 flex-shrink-0">
+              {p.preference_no}
+            </span>
+            <div className="flex-1 min-w-0">
+              <span className="text-sm font-medium text-gray-800">
+                {p.nit_name}
+              </span>
+              <span className="text-xs text-gray-400 ml-2">
+                {p.branch} · {p.category}
+              </span>
+            </div>
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${
+              p.bucket === 'Safe'
+                ? 'bg-green-100 text-green-700'
+                : p.bucket === 'Target'
+                ? 'bg-amber-100 text-amber-700'
+                : 'bg-red-100 text-red-600'
+            }`}>
+              {p.probability}%
+            </span>
+          </div>
+        ))}
+      </div>
+      {data.why_this_order && (
+        <p className="text-xs text-gray-400 leading-relaxed">
+          {data.why_this_order}
+        </p>
+      )}
+    </>
+  )
+
+  // ════════════════════════════════════════════════════════
+  // RENDER
+  // ════════════════════════════════════════════════════════
+
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-5">
 
-      {/* Part tabs */}
+      {/* ── Part tabs ── */}
       <div className="flex gap-2 mb-5">
         {[
           { id: 'part1', label: 'Part 1', sub: 'Regular Rounds R1 R2 R3' },
           { id: 'part2', label: 'Part 2', sub: 'Special Rounds SR1 SR2' },
           { id: 'part3', label: 'Part 3', sub: 'National Round NR1' },
-        ].map(p => (
-          <button
-            key={p.id}
-            onClick={() => switchPart(p.id)}
-            className={`flex-1 py-2.5 rounded-xl border text-left px-3 transition-all ${
-              activePart === p.id
-                ? 'bg-blue-900 border-blue-900'
-                : 'bg-white border-gray-200 hover:border-blue-300'
-            }`}
-          >
-            <p className={`text-sm font-semibold ${
-              activePart === p.id ? 'text-white' : 'text-gray-800'
-            }`}>
-              {p.label}
-            </p>
-            <p className={`text-xs mt-0.5 ${
-              activePart === p.id ? 'text-blue-200' : 'text-gray-400'
-            }`}>
-              {p.sub}
-            </p>
-          </button>
-        ))}
+        ].map(p => {
+          const disabled = isTabDisabled(p.id)
+          return (
+            <button
+              key={p.id}
+              onClick={() => switchPart(p.id)}
+              disabled={disabled}
+              className={`flex-1 py-2.5 rounded-xl border text-left px-3 transition-all ${
+                disabled
+                  ? 'bg-gray-100 border-gray-200 cursor-not-allowed opacity-50'
+                  : activePart === p.id
+                  ? 'bg-blue-900 border-blue-900'
+                  : 'bg-white border-gray-200 hover:border-blue-300'
+              }`}
+            >
+              <p className={`text-sm font-semibold ${
+                disabled
+                  ? 'text-gray-400'
+                  : activePart === p.id ? 'text-white' : 'text-gray-800'
+              }`}>
+                {p.label} {disabled ? '🔒' : ''}
+              </p>
+              <p className={`text-xs mt-0.5 ${
+                disabled
+                  ? 'text-gray-400'
+                  : activePart === p.id ? 'text-blue-200' : 'text-gray-400'
+              }`}>
+                {disabled ? 'Locked — seat frozen' : p.sub}
+              </p>
+            </button>
+          )
+        })}
       </div>
 
-      {/* Part 1 */}
+      {/* ════════════════════════════════════════════════════
+          PART 1 — Regular Rounds
+          Simple: just generate the list.
+          No frozen checkbox here.
+          Student has not started counselling yet.
+      ════════════════════════════════════════════════════ */}
       {activePart === 'part1' && (
         <>
           <div className="flex items-center justify-between mb-3">
@@ -275,7 +422,8 @@ function ChoiceFilingList({ token }) {
                 Part 1 Preference List
               </h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                Submit ONCE before Round 1. Valid for R1, R2, R3.
+                Submit ONCE before Round 1.
+                Valid for R1, R2, and R3.
               </p>
             </div>
             <div className="flex gap-2">
@@ -298,159 +446,162 @@ function ChoiceFilingList({ token }) {
               )}
             </div>
           </div>
-
           {list && renderList(list)}
         </>
       )}
 
-      {/* Part 2 */}
+      {/* ════════════════════════════════════════════════════
+          PART 2 — Special Rounds
+          Ask: Got seat in Regular Rounds? Yes / No / Frozen
+      ════════════════════════════════════════════════════ */}
       {activePart === 'part2' && (
         <>
-          <div className="mb-4">
-            <h2 className="font-semibold text-gray-900 text-sm mb-1">
-              Part 2 Preference List
-            </h2>
-            <p className="text-xs text-gray-400 mb-3">
-              Submit a NEW list before Special Round 1.
-              Different from Part 1.
+          <h2 className="font-semibold text-gray-900 text-sm mb-1">
+            Part 2 Preference List
+          </h2>
+          <p className="text-xs text-gray-400 mb-3">
+            Submit a NEW list before Special Round 1.
+            Different from Part 1.
+          </p>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs text-amber-800">
+            <p className="font-medium mb-1">⚠️ Note on accuracy</p>
+            <p>
+              Part 2 list uses the same scoring engine as Part 1
+              with dummy data. In Phase 2, real CCMT round results
+              and remaining seat matrix will generate a more
+              accurate Part 2 list.
             </p>
+          </div>
 
-            {/* Accuracy note */}
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 text-xs text-amber-800">
-              <p className="font-medium mb-1">⚠️ Note on Part 2 accuracy</p>
-              <p>
-                Part 2 list currently uses the same scoring engine as
-                Part 1 with dummy data. In Phase 2, real-time CCMT
-                round results and remaining seat matrix will generate
-                a more accurate and different Part 2 list.
-              </p>
-            </div>
-
-            {/* Step 1: Did you get a seat? */}
-            {!list && (
-              <>
-                <div className="mb-4">
-                  <label className="text-xs font-medium text-gray-700 mb-2 block">
-                    Did you get a seat in Regular Rounds (R1, R2, R3)?
-                  </label>
-                  <div className="flex gap-2">
-                    {['Yes', 'No'].map(opt => (
-                      <button
-                        key={opt}
-                        type="button"
-                        onClick={() => {
-                          setGotSeat(opt)
-                          setCurrentAllocation('')
-                          setList(null)
-                        }}
-                        className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                          gotSeat === opt
-                            ? 'bg-blue-900 text-white border-blue-900'
-                            : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
-                        }`}
-                      >
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* If No seat */}
-                {gotSeat === 'No' && (
-                  <div className="flex flex-col gap-3">
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
-                      <p className="font-medium mb-1">
-                        No seat from Regular Rounds
-                      </p>
-                      <p>
-                        You can still participate in Special Rounds.
-                        The system will generate a full list based on
-                        your profile and GATE score.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setCurrentAllocation('No seat')
-                        fetchPart2()
-                      }}
-                      disabled={loading}
-                      className="bg-blue-900 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-800 disabled:opacity-50 font-medium"
-                    >
-                      {loading ? 'Generating...' : 'Generate Part 2 List'}
-                    </button>
-                  </div>
-                )}
-
-                {/* If Yes — got seat */}
-                {gotSeat === 'Yes' && (
-                  <div className="flex flex-col gap-3">
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 mb-1 block">
-                        Your current allocation from Regular Rounds
-                      </label>
-                      <div className="flex gap-2">
-                        <select
-                          value={currentAllocation.split('—')[0]?.trim() || ''}
-                          onChange={e => {
-                            const nit = e.target.value
-                            const branch = currentAllocation.split('—')[1]?.trim() || ''
-                            setCurrentAllocation(
-                              branch ? `${nit} — ${branch}` : nit
-                            )
-                          }}
-                          className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
-                        >
-                          <option value="">Select NIT</option>
-                          <option value="NIT Silchar">NIT Silchar</option>
-                          <option value="NIT Rourkela">NIT Rourkela</option>
-                          <option value="NIT Trichy">NIT Trichy</option>
-                          <option value="NIT Warangal">NIT Warangal</option>
-                          <option value="NIT Calicut">NIT Calicut</option>
-                        </select>
-                        <select
-                          value={currentAllocation.split('—')[1]?.trim() || ''}
-                          onChange={e => {
-                            const nit = currentAllocation.split('—')[0]?.trim() || ''
-                            setCurrentAllocation(`${nit} — ${e.target.value}`)
-                          }}
-                          className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
-                        >
-                          <option value="">Select Branch</option>
-                          <option value="CSE">CSE</option>
-                          <option value="AI">AI</option>
-                          <option value="DS">DS</option>
-                          <option value="IT">IT</option>
-                          <option value="ML">ML</option>
-                          <option value="CY">CY</option>
-                          <option value="SE">SE</option>
-                          <option value="DE">DE</option>
-                          <option value="IS">IS</option>
-                          <option value="HCI">HCI</option>
-                        </select>
-                      </div>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Select the NIT and branch you were allotted in Round 3
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={fetchPart2}
-                      disabled={
-                        loading ||
-                        !currentAllocation.includes('—') ||
-                        !currentAllocation.split('—')[1]?.trim()
+          {/* Seat status question */}
+          {!frozenAt && (
+            <div className="mb-4">
+              <label className="text-xs font-medium text-gray-700 mb-2 block">
+                What is your situation after Regular Rounds?
+              </label>
+              <div className="flex flex-col gap-2">
+                {[
+                  {
+                    id: 'Yes',
+                    label: 'I got a seat and want to upgrade',
+                    sub: 'Allotted in R1, R2, or R3 — trying for better in Special Rounds'
+                  },
+                  {
+                    id: 'No',
+                    label: 'I did not get any seat',
+                    sub: 'Registering fresh for Special Rounds'
+                  },
+                  {
+                    id: 'Frozen',
+                    label: 'I already froze my seat in Regular Rounds',
+                    sub: 'Satisfied with current seat — no further action needed'
+                  }
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      setGotSeat(opt.id)
+                      setCurrentAllocation('')
+                      setList(null)
+                      if (opt.id === 'Frozen') {
+                        setFrozenAt('part2')
                       }
-                      className="bg-blue-900 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-800 disabled:opacity-50 font-medium"
-                    >
-                      {loading ? 'Generating...' : 'Generate Part 2 List'}
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
+                    }}
+                    className={`w-full py-3 px-4 rounded-xl border text-left transition-all ${
+                      gotSeat === opt.id
+                        ? 'bg-blue-900 border-blue-900'
+                        : 'bg-white border-gray-200 hover:border-blue-300'
+                    }`}
+                  >
+                    <p className={`text-sm font-medium ${
+                      gotSeat === opt.id ? 'text-white' : 'text-gray-800'
+                    }`}>
+                      {opt.label}
+                    </p>
+                    <p className={`text-xs mt-0.5 ${
+                      gotSeat === opt.id ? 'text-blue-200' : 'text-gray-400'
+                    }`}>
+                      {opt.sub}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
-            {/* Show generated list */}
-            {list && (
+          {/* Frozen in Part 2 */}
+          {frozenAt === 'part2' && (
+            <>
+              <CongratsMessage frozenPart="part2" />
+              <button
+                onClick={() => {
+                  setFrozenAt(null)
+                  setGotSeat(null)
+                }}
+                className="w-full mt-3 text-xs text-gray-400 hover:text-gray-600 py-2"
+              >
+                Undo — I have not frozen yet
+              </button>
+            </>
+          )}
+
+          {/* No seat */}
+          {gotSeat === 'No' && !frozenAt && !list && (
+            <div className="flex flex-col gap-3">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+                <p className="font-medium mb-1">
+                  No seat from Regular Rounds
+                </p>
+                <p>
+                  You can still participate in Special Rounds.
+                  The system will generate a full list based on
+                  your profile and GATE score.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setCurrentAllocation('No seat')
+                  fetchPart2()
+                }}
+                disabled={loading}
+                className="bg-blue-900 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-800 disabled:opacity-50 font-medium"
+              >
+                {loading ? 'Generating...' : 'Generate Part 2 List'}
+              </button>
+            </div>
+          )}
+
+          {/* Got seat — show dropdowns */}
+          {gotSeat === 'Yes' && !frozenAt && !list && (
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1 block">
+                  Your current allocation from Regular Rounds
+                </label>
+                <AllocationDropdowns />
+                <p className="text-xs text-gray-400 mt-1">
+                  Select the NIT and branch allotted in Round 3
+                </p>
+              </div>
+              <button
+                onClick={fetchPart2}
+                disabled={
+                  loading ||
+                  !currentAllocation.includes('—') ||
+                  !currentAllocation.split('—')[1]?.trim()
+                }
+                className="bg-blue-900 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-800 disabled:opacity-50 font-medium"
+              >
+                {loading ? 'Generating...' : 'Generate Part 2 List'}
+              </button>
+            </div>
+          )}
+
+          {/* Generated list */}
+          {list && !frozenAt && (
+            <>
               <div className="flex items-center justify-between mb-3">
                 <div className="bg-gray-50 rounded-xl px-3 py-2 text-xs text-gray-600">
                   {currentAllocation === 'No seat'
@@ -477,27 +628,38 @@ function ChoiceFilingList({ token }) {
                   </button>
                 </div>
               </div>
-            )}
-          </div>
-
-          {list && renderList(list)}
+              {renderList(list)}
+            </>
+          )}
         </>
       )}
 
-      {/* Part 3 */}
+      {/* ════════════════════════════════════════════════════
+          PART 3 — National Round
+          Ask: Got seat? / No seat? / Already frozen?
+      ════════════════════════════════════════════════════ */}
       {activePart === 'part3' && (
         <>
-          <div className="mb-4">
-            <h2 className="font-semibold text-gray-900 text-sm mb-1">
-              Part 3 — National Round (NR1)
-            </h2>
-            <p className="text-xs text-gray-400 mb-3">
-              Final round of CCMT counselling.
-              Last chance to get a seat or upgrade.
-            </p>
+          <h2 className="font-semibold text-gray-900 text-sm mb-1">
+            Part 3 Preference List
+          </h2>
+          <p className="text-xs text-gray-400 mb-3">
+            Final round of CCMT counselling.
+            Last chance to get or upgrade your seat.
+          </p>
 
-            {/* Seat status */}
-            <div className="mb-3">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs text-amber-800">
+            <p className="font-medium mb-1">⚠️ Note on accuracy</p>
+            <p>
+              Part 3 list uses the same scoring engine as Part 1
+              with dummy data. In Phase 2, real-time data will
+              generate a more accurate National Round list.
+            </p>
+          </div>
+
+          {/* Seat status question */}
+          {!frozenAt && (
+            <div className="mb-4">
               <label className="text-xs font-medium text-gray-700 mb-2 block">
                 What is your current situation?
               </label>
@@ -505,8 +667,8 @@ function ChoiceFilingList({ token }) {
                 {[
                   {
                     id: 'has_seat',
-                    label: 'I have a seat from Part 1 or Part 2',
-                    sub: 'Want to try upgrading in National Round'
+                    label: 'I have a seat and want to upgrade',
+                    sub: 'Got a seat in Part 1 or Part 2 — trying for better in National Round'
                   },
                   {
                     id: 'no_seat',
@@ -516,7 +678,7 @@ function ChoiceFilingList({ token }) {
                   {
                     id: 'frozen',
                     label: 'I already froze my seat',
-                    sub: 'Confirmed seat — no further action needed'
+                    sub: 'Confirmed seat from Part 1 or Part 2 — no further action needed'
                   }
                 ].map(opt => (
                   <button
@@ -524,8 +686,11 @@ function ChoiceFilingList({ token }) {
                     type="button"
                     onClick={() => {
                       setGotSeat(opt.id)
-                      setList(null)
                       setCurrentAllocation('')
+                      setList(null)
+                      if (opt.id === 'frozen') {
+                        setFrozenAt('part3')
+                      }
                     }}
                     className={`w-full py-3 px-4 rounded-xl border text-left transition-all ${
                       gotSeat === opt.id
@@ -547,107 +712,109 @@ function ChoiceFilingList({ token }) {
                 ))}
               </div>
             </div>
+          )}
 
-            {/* Frozen seat */}
-            {gotSeat === 'frozen' && (
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
-                <p className="text-2xl mb-2">🎉</p>
-                <p className="font-semibold text-green-800 mb-1">
-                  Congratulations!
-                </p>
-                <p className="text-sm text-green-700">
-                  You have frozen your seat. Your admission is confirmed.
-                  No further action is needed in CCMT counselling.
-                  Report to your allotted institute as per their schedule.
-                </p>
-              </div>
-            )}
+          {/* Frozen in Part 3 */}
+          {frozenAt === 'part3' && (
+            <>
+              <CongratsMessage frozenPart="part3" />
+              <button
+                onClick={() => {
+                  setFrozenAt(null)
+                  setGotSeat(null)
+                }}
+                className="w-full mt-3 text-xs text-gray-400 hover:text-gray-600 py-2"
+              >
+                Undo — I have not frozen yet
+              </button>
+            </>
+          )}
 
-            {/* Has seat — show upgrade option */}
-            {gotSeat === 'has_seat' && (
-              <div className="flex flex-col gap-3">
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
-                  National Round is your last chance to upgrade.
-                  Generate your Part 3 list based on your current seat.
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-700 mb-1 block">
-                    Your current allocation
-                  </label>
-                  <div className="flex gap-2">
-                    <select
-                      value={currentAllocation.split('—')[0]?.trim() || ''}
-                      onChange={e => {
-                        const nit = e.target.value
-                        const branch = currentAllocation.split('—')[1]?.trim() || ''
-                        setCurrentAllocation(branch ? `${nit} — ${branch}` : nit)
-                      }}
-                      className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
-                    >
-                      <option value="">Select NIT</option>
-                      <option value="NIT Silchar">NIT Silchar</option>
-                      <option value="NIT Rourkela">NIT Rourkela</option>
-                      <option value="NIT Trichy">NIT Trichy</option>
-                      <option value="NIT Warangal">NIT Warangal</option>
-                      <option value="NIT Calicut">NIT Calicut</option>
-                    </select>
-                    <select
-                      value={currentAllocation.split('—')[1]?.trim() || ''}
-                      onChange={e => {
-                        const nit = currentAllocation.split('—')[0]?.trim() || ''
-                        setCurrentAllocation(`${nit} — ${e.target.value}`)
-                      }}
-                      className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
-                    >
-                      <option value="">Select Branch</option>
-                      <option value="CSE">CSE</option>
-                      <option value="AI">AI</option>
-                      <option value="DS">DS</option>
-                      <option value="IT">IT</option>
-                      <option value="ML">ML</option>
-                      <option value="CY">CY</option>
-                      <option value="SE">SE</option>
-                      <option value="DE">DE</option>
-                      <option value="IS">IS</option>
-                      <option value="HCI">HCI</option>
-                    </select>
-                  </div>
-                </div>
-                <button
-                  onClick={fetchPart2}
-                  disabled={loading || !currentAllocation.includes('—')}
-                  className="bg-blue-900 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-800 disabled:opacity-50 font-medium"
-                >
-                  {loading ? 'Generating...' : 'Generate Part 3 List'}
-                </button>
-              </div>
-            )}
-
-            {/* No seat — fresh start */}
-            {gotSeat === 'no_seat' && (
-              <div className="flex flex-col gap-3">
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+          {/* No seat */}
+          {gotSeat === 'no_seat' && !frozenAt && !list && (
+            <div className="flex flex-col gap-3">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+                <p className="font-medium mb-1">Fresh registration</p>
+                <p>
                   You are registering fresh for National Round.
-                  The system will generate a full preference list
-                  based on your profile and GATE score.
-                </div>
-                <button
-                  onClick={() => {
-                    setCurrentAllocation('No seat — fresh registration')
-                    fetchPart2()
-                  }}
-                  disabled={loading}
-                  className="bg-blue-900 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-800 disabled:opacity-50 font-medium"
-                >
-                  {loading ? 'Generating...' : 'Generate Part 3 List'}
-                </button>
+                  The system will generate a full list based on
+                  your profile and GATE score.
+                </p>
               </div>
-            )}
-          </div>
+              <button
+                onClick={() => {
+                  setCurrentAllocation('No seat')
+                  fetchPart2()
+                }}
+                disabled={loading}
+                className="bg-blue-900 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-800 disabled:opacity-50 font-medium"
+              >
+                {loading ? 'Generating...' : 'Generate Part 3 List'}
+              </button>
+            </div>
+          )}
 
-          {list && renderList(list)}
+          {/* Has seat */}
+          {gotSeat === 'has_seat' && !frozenAt && !list && (
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1 block">
+                  Your current allocation
+                </label>
+                <AllocationDropdowns />
+                <p className="text-xs text-gray-400 mt-1">
+                  Select your current NIT and branch
+                </p>
+              </div>
+              <button
+                onClick={fetchPart2}
+                disabled={
+                  loading ||
+                  !currentAllocation.includes('—') ||
+                  !currentAllocation.split('—')[1]?.trim()
+                }
+                className="bg-blue-900 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-800 disabled:opacity-50 font-medium"
+              >
+                {loading ? 'Generating...' : 'Generate Part 3 List'}
+              </button>
+            </div>
+          )}
+
+          {/* Generated list */}
+          {list && !frozenAt && (
+            <>
+              <div className="flex items-center justify-between mb-3">
+                <div className="bg-gray-50 rounded-xl px-3 py-2 text-xs text-gray-600">
+                  {currentAllocation === 'No seat'
+                    ? 'Fresh registration for National Round'
+                    : <>Current: <strong>{currentAllocation}</strong></>
+                  }
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setList(null)
+                      setCurrentAllocation('')
+                      setGotSeat(null)
+                    }}
+                    className="text-xs text-gray-400 hover:text-gray-600 px-2"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    onClick={copyList}
+                    className="bg-green-700 text-white text-xs px-3 py-2 rounded-xl hover:bg-green-600"
+                  >
+                    Copy List
+                  </button>
+                </div>
+              </div>
+              {renderList(list)}
+            </>
+          )}
         </>
       )}
+
     </div>
   )
 }
