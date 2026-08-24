@@ -91,12 +91,20 @@ def generate_preference_list(safe, target, ambitious, student):
 async def get_scored_nits(student, db):
     from app.routes.recommend import score_nit_programme
     nits = await db["nits"].find({}, {"_id": 0}).to_list(length=100)
+
+    sentiment_docs = await db["nit_sentiment"].find({}, {"_id": 0}).to_list(length=100)
+    sentiment_lookup = {
+        doc["nit_code"]: doc["overall_score"]
+        for doc in sentiment_docs
+    }
+
     scored = []
     for nit in nits:
         for programme in nit.get("mtech_programs", []):
-            result = score_nit_programme(nit, programme, student)
+            result = score_nit_programme(nit, programme, student, sentiment_lookup)
             if result:
                 scored.append(result)
+
     scored.sort(key=lambda x: x["total_score"], reverse=True)
     return scored
 
@@ -349,7 +357,12 @@ async def advisor(
                     if (prog.get("short_name", "").upper()
                             != target_branch.strip().upper()):
                         continue
-                result = score_nit_programme(nit, prog, student)
+                sentiment_docs = await db["nit_sentiment"].find({}, {"_id": 0}).to_list(length=100)
+                sentiment_lookup = {
+                    doc["nit_code"]: doc["overall_score"]
+                    for doc in sentiment_docs
+                }
+                result = score_nit_programme(nit, prog, student, sentiment_lookup)
                 if result:
                     p = result.get("admission_probability", 0)
                     if p > probability:

@@ -4,7 +4,7 @@ from app.auth import decode_token
 
 router = APIRouter()
 
-def score_nit_programme(nit, programme, student):
+def score_nit_programme(nit, programme, student, sentiment_lookup=None):
 
     gate_score = student.get("gate_score", 0)
     category = student.get("category", "UR").upper()
@@ -69,16 +69,12 @@ def score_nit_programme(nit, programme, student):
     else:
         factor2 = 4
 
-    # Factor 3: Sentiment (15pts)
-    dummy_sentiment = {
-        "NITSLR": 7.1,
-        "NITRK":  8.1,
-        "NITT":   8.3,
-        "NITW":   8.4,
-        "NITC":   7.9,
-    }
+    # Factor 3: Sentiment (15pts) — uses real data if available
     nit_code = nit.get("nit_code", "")
-    sentiment = dummy_sentiment.get(nit_code, 6.0)
+    if sentiment_lookup and nit_code in sentiment_lookup:
+        sentiment = sentiment_lookup[nit_code]
+    else:
+        sentiment = 6.0  # fallback default
     factor3 = (sentiment / 10) * 15
 
     # Factor 4: Location (15pts)
@@ -152,6 +148,13 @@ def score_nit_programme(nit, programme, student):
 async def get_recommendations(token: str):
     db = get_db()
 
+    # Fetch real sentiment scores once
+    sentiment_docs = await db["nit_sentiment"].find({}, {"_id": 0}).to_list(length=100)
+    sentiment_lookup = {
+        doc["nit_code"]: doc["overall_score"]
+        for doc in sentiment_docs
+    }
+
     payload = decode_token(token)
     email = payload.get("sub")
 
@@ -175,7 +178,7 @@ async def get_recommendations(token: str):
     scored = []
     for nit in nits:
         for programme in nit.get("mtech_programs", []):
-            result = score_nit_programme(nit, programme, student)
+            result = score_nit_programme(nit, programme, student, sentiment_lookup)
             if result:  # None means not eligible (wrong GATE paper)
                 scored.append(result)
 
