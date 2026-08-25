@@ -12,11 +12,79 @@ load_dotenv()
 
 analyser = SentimentIntensityAnalyzer()
 
+analyser = SentimentIntensityAnalyzer()
+
+# Extend lexicon with Indian internet slang + emojis
+# not well covered by default VADER lexicon
+custom_lexicon = {
+    "🔥": 2.5,
+    "📈": 1.8,
+    "op": 2.0,          # "overpowered" = excellent (slang)
+    "mast": 2.0,         # Hindi slang: great
+    "badhiya": 2.0,       # Hindi slang: good
+    "solid": 2.2,
+    "worth it": 2.0,
+    "waste": -2.5,
+    "bekar": -2.0,        # Hindi slang: useless
+    "ganda": -2.0,        # Hindi slang: bad
+    "chalu": -1.0,        # Hindi slang: mediocre/fake
+    "top notch": 3.0,
+    "underrated": 1.5,
+    "overrated": -1.5,
+}
+analyser.lexicon.update(custom_lexicon)
+
 def get_sentiment_score(text: str) -> float:
     """Returns compound score: -1 (negative) to +1 (positive)"""
     scores = analyser.polarity_scores(text)
     return scores["compound"]
 
+import re
+
+# ── Filter out noise: rank/cutoff query posts ─────────────
+
+NOISE_PATTERNS = [
+    r'\bpercentile\b',
+    r'\brank\b',
+    r'\bcutoff\b',
+    r'\bcut off\b',
+    r'\bair\b',
+    r'\bmilega\b',
+    r'\bmilegi\b',
+    r'\bmil sakta\b',
+    r'\bpossible hai\b',
+    r'\bews\b.*\bhomestate\b',
+    r'^\d+\.?\d*\s*(percentile|rank)',
+    r'\bkya\b.*\?$',
+]
+
+def is_noise_post(text: str) -> bool:
+    """
+    Returns True if post looks like an admission
+    rank/cutoff query rather than a genuine opinion.
+    """
+    text_lower = text.lower().strip()
+
+    # Too short to have real sentiment
+    if len(text_lower) < 25:
+        return True
+
+    # Mostly digits (rank numbers)
+    digit_ratio = sum(c.isdigit() for c in text_lower) / max(len(text_lower), 1)
+    if digit_ratio > 0.15:
+        return True
+
+    # Matches known noise patterns
+    for pattern in NOISE_PATTERNS:
+        if re.search(pattern, text_lower):
+            return True
+
+    return False
+
+
+def filter_opinion_posts(posts: list) -> list:
+    """Keep only posts likely to contain real opinions."""
+    return [p for p in posts if not is_noise_post(p)]
 
 # ── PaGaLGuY scraper ──────────────────────────────────────
 
@@ -160,23 +228,30 @@ def fetch_gate_difficulty_posts(year: int):
     Combine PaGaLGuY + YouTube for GATE difficulty posts.
     """
     queries = [
-        f"GATE {year} difficulty analysis",
-        f"GATE {year} paper review",
-        f"GATE CSE {year} difficult"
+        f"GATE {year} paper analysis difficulty",
+        f"GATE {year} exam review students reaction",
+        f"GATE CSE {year} was it tough or easy"
     ]
 
     all_posts = []
 
     for q in queries:
-        pagalguy_posts = fetch_pagalguy_posts(q, max_threads=5)
-        all_posts.extend(pagalguy_posts)
+        pagalguy_posts = fetch_pagalguy_posts(q, max_threads=4)
+        for p in pagalguy_posts:
+            all_posts.append({"text": p, "source": "PaGaLGuY"})
 
         youtube_posts = fetch_youtube_posts(q, max_videos=3)
-        all_posts.extend(youtube_posts)
+        for p in youtube_posts:
+            all_posts.append({"text": p, "source": "YouTube"})
 
-    print(f"Fetched {len(all_posts)} GATE {year} posts "
-          f"(PaGaLGuY + YouTube combined)")
-    return all_posts
+    filtered = [
+        p for p in all_posts
+        if not is_noise_post(p["text"])
+    ]
+
+    print(f"Fetched {len(all_posts)} raw posts for GATE {year}, "
+          f"{len(filtered)} kept after noise filtering")
+    return filtered
 
 
 # ── Combined fetch: NIT reviews ───────────────────────────
@@ -184,25 +259,37 @@ def fetch_gate_difficulty_posts(year: int):
 def fetch_nit_review_posts(nit_name: str):
     """
     Combine PaGaLGuY + YouTube for NIT review posts.
+    Targets genuine opinions, not admission queries.
     """
     queries = [
-        f"{nit_name} placement review",
-        f"{nit_name} campus life MTech",
-        f"{nit_name} faculty review"
+        f"{nit_name} hostel life experience",
+        f"{nit_name} campus tour vlog",
+        f"{nit_name} alumni experience",
+        f"{nit_name} MTech placement companies",
+        f"{nit_name} faculty teaching quality",
+        f"studying at {nit_name}"
     ]
 
     all_posts = []
 
     for q in queries:
-        pagalguy_posts = fetch_pagalguy_posts(q, max_threads=5)
-        all_posts.extend(pagalguy_posts)
+        pagalguy_posts = fetch_pagalguy_posts(q, max_threads=4)
+        for p in pagalguy_posts:
+            all_posts.append({"text": p, "source": "PaGaLGuY"})
 
-        youtube_posts = fetch_youtube_posts(q, max_videos=3)
-        all_posts.extend(youtube_posts)
+        youtube_posts = fetch_youtube_posts(q, max_videos=2)
+        for p in youtube_posts:
+            all_posts.append({"text": p, "source": "YouTube"})
 
-    print(f"Fetched {len(all_posts)} posts for {nit_name} "
-          f"(PaGaLGuY + YouTube combined)")
-    return all_posts
+    # Filter out noise (rank/cutoff queries)
+    filtered = [
+        p for p in all_posts
+        if not is_noise_post(p["text"])
+    ]
+
+    print(f"Fetched {len(all_posts)} raw posts for {nit_name}, "
+          f"{len(filtered)} kept after noise filtering")
+    return filtered
 
 
 # ── Calculate GATE difficulty score ──────────────────────
@@ -216,10 +303,11 @@ def calculate_gate_difficulty(year: int) -> dict:
             "difficulty_score": 5.0,
             "label": "Moderate",
             "posts_analysed": 0,
-            "source": "default"
+            "source": "default",
+            "sample_posts": []
         }
 
-    scores = [get_sentiment_score(p) for p in posts]
+    scores = [get_sentiment_score(p["text"]) for p in posts]
     avg_sentiment = sum(scores) / len(scores)
     difficulty = round((1 - avg_sentiment) / 2 * 10, 1)
     difficulty = max(0.0, min(10.0, difficulty))
@@ -235,15 +323,23 @@ def calculate_gate_difficulty(year: int) -> dict:
     else:
         label = "Easy"
 
+    sample_posts = []
+    for i, post in enumerate(posts[:15]):
+        sample_posts.append({
+            "text": post["text"][:300],
+            "source": post["source"],
+            "sentiment_score": round(scores[i], 3)
+        })
+
     return {
         "year": year,
         "difficulty_score": difficulty,
         "label": label,
         "posts_analysed": len(posts),
         "avg_sentiment": round(avg_sentiment, 3),
-        "source": "PaGaLGuY + YouTube VADER"
+        "source": "PaGaLGuY + YouTube VADER",
+        "sample_posts": sample_posts
     }
-
 
 # ── Calculate NIT quality score ───────────────────────────
 
@@ -260,13 +356,14 @@ def calculate_nit_quality(nit_name: str, nit_code: str) -> dict:
             "faculty_score": 6.0,
             "posts_analysed": 0,
             "label": "Average",
-            "source": "default"
+            "source": "default",
+            "sample_posts": []
         }
 
     placement_posts, campus_posts, faculty_posts = [], [], []
 
     for post in posts:
-        p_lower = post.lower()
+        p_lower = post["text"].lower()
         if any(w in p_lower for w in
                ["placement", "job", "company", "recruit", "package", "lpa"]):
             placement_posts.append(post)
@@ -281,7 +378,7 @@ def calculate_nit_quality(nit_name: str, nit_code: str) -> dict:
         target = post_list if post_list else fallback
         if not target:
             return 6.0
-        scores = [get_sentiment_score(p) for p in target]
+        scores = [get_sentiment_score(p["text"]) for p in target]
         avg = sum(scores) / len(scores)
         return round((avg + 1) / 2 * 10, 1)
 
@@ -299,6 +396,14 @@ def calculate_nit_quality(nit_name: str, nit_code: str) -> dict:
     else:
         label = "Poor"
 
+    sample_posts = []
+    for post in posts[:15]:
+        sample_posts.append({
+            "text": post["text"][:300],
+            "source": post["source"],
+            "sentiment_score": round(get_sentiment_score(post["text"]), 3)
+        })
+
     return {
         "nit_code": nit_code,
         "nit_name": nit_name,
@@ -308,5 +413,6 @@ def calculate_nit_quality(nit_name: str, nit_code: str) -> dict:
         "faculty_score": faculty,
         "posts_analysed": len(posts),
         "label": label,
-        "source": "PaGaLGuY + YouTube VADER"
+        "source": "PaGaLGuY + YouTube VADER",
+        "sample_posts": sample_posts
     }
