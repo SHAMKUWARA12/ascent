@@ -33,6 +33,9 @@ export const saveConstraints = (data, token) =>
 export const getProfile = (token) =>
   API.get(`/profile?token=${token}`)
 
+export const getAllNits = () =>
+  API.get(`/nits`)
+
 // ---------- Recommendations ----------
 export const getRecommendations = (token) =>
   API.get(`/recommend?token=${token}`)

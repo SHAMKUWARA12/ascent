@@ -1,29 +1,41 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getAdvisor } from '../services/api'
+import { getAdvisor, getAllNits} from '../services/api'
 
-const BRANCH_OPTIONS = [
-  { code: 'CSE', name: 'Computer Science & Engineering' },
-  { code: 'AI',  name: 'Artificial Intelligence' },
-  { code: 'DS',  name: 'Data Science & Engineering' },
-  { code: 'IT',  name: 'Information Technology' },
-  { code: 'ML',  name: 'Machine Learning' },
-  { code: 'CY',  name: 'Cyber Security' },
-  { code: 'SE',  name: 'Software Engineering' },
-  { code: 'DE',  name: 'Data Engineering' },
-  { code: 'IS',  name: 'Information Security' },
-  { code: 'HCI', name: 'Human Computer Interaction' },
-]
-
-const NIT_OPTIONS = [
-  'NIT Silchar', 'NIT Rourkela', 'NIT Trichy',
-  'NIT Warangal', 'NIT Calicut'
-]
 
 export default function Advisor() {
   const { token } = useAuth()
   const navigate = useNavigate()
+
+  const [nitList, setNitList] = useState([])
+  const [branchOptions, setBranchOptions] = useState([])
+
+  useEffect(() => {
+    fetchNitOptions()
+  }, [])
+
+  const fetchNitOptions = async () => {
+    try {
+      const res = await getAllNits()
+      const nits = res.data.nits
+
+      setNitList(nits.map(n => n.name).sort())
+
+      const branchSet = new Map()
+      nits.forEach(n => {
+        (n.mtech_programs || []).forEach(p => {
+          branchSet.set(p.short_name, p.short_name_full || p.short_name)
+        })
+      })
+      setBranchOptions(
+        Array.from(branchSet, ([code, name]) => ({ code, name }))
+          .sort((a, b) => a.code.localeCompare(b.code))
+      )
+    } catch (err) {
+      console.error('Could not load NIT list', err)
+    }
+  }
 
   const [form, setForm] = useState({
     current_nit: '',
@@ -143,7 +155,7 @@ export default function Advisor() {
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
                   >
                     <option value="">Select NIT</option>
-                    {NIT_OPTIONS.map(n => (
+                    {nitList.map(n => (
                       <option key={n} value={n}>{n}</option>
                     ))}
                   </select>
@@ -159,7 +171,7 @@ export default function Advisor() {
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
                   >
                     <option value="">Select Branch</option>
-                    {BRANCH_OPTIONS.map(b => (
+                    {branchOptions.map(b => (
                       <option key={b.code} value={b.code}>{b.code}</option>
                     ))}
                   </select>
@@ -198,7 +210,7 @@ export default function Advisor() {
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
                   >
                     <option value="">Select NIT</option>
-                    {NIT_OPTIONS.map(n => (
+                    {nitList.map(n => (
                       <option key={n} value={n}>{n}</option>
                     ))}
                   </select>
@@ -214,7 +226,7 @@ export default function Advisor() {
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
                   >
                     <option value="">Any branch</option>
-                    {BRANCH_OPTIONS.map(b => {
+                    {branchOptions.map(b => {
                       const isSameCombo =
                         form.current_nit === form.target_nit &&
                         b.code === form.current_branch

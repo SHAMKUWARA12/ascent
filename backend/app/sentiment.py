@@ -1,4 +1,23 @@
+"""
+ASCENT — Sentiment Analysis Module
+
+Collects real student opinions and reviews from two public
+sources (PaGaLGuY forums and YouTube video comments), scores
+them using VADER (a lexicon-based sentiment analysis tool),
+and computes:
+
+1. GATE Exam Difficulty Score (per year) — how hard students
+   found a particular GATE cycle, used to contextualise
+   cutoff score predictions.
+
+2. NIT Quality Score (per institute) — student sentiment
+   about placements, campus life, and faculty, broken into
+   sub-scores and an overall score, used as one of the five
+   factors in the recommendation engine.
+"""
+
 import os
+import re
 import time
 import requests
 from bs4 import BeautifulSoup
@@ -8,40 +27,45 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── VADER analyser ────────────────────────────────────────
+# ── VADER analyser with custom lexicon additions ──────────
+# Base VADER lexicon is tuned for general English social
+# media. We extend it with Indian internet slang and emojis
+# commonly seen in GATE/NIT discussion posts, which the
+# default lexicon does not recognise.
 
 analyser = SentimentIntensityAnalyzer()
 
-analyser = SentimentIntensityAnalyzer()
-
-# Extend lexicon with Indian internet slang + emojis
-# not well covered by default VADER lexicon
 custom_lexicon = {
     "🔥": 2.5,
     "📈": 1.8,
-    "op": 2.0,          # "overpowered" = excellent (slang)
-    "mast": 2.0,         # Hindi slang: great
-    "badhiya": 2.0,       # Hindi slang: good
+    "op": 2.0,
+    "mast": 2.0,
+    "badhiya": 2.0,
     "solid": 2.2,
     "worth it": 2.0,
     "waste": -2.5,
-    "bekar": -2.0,        # Hindi slang: useless
-    "ganda": -2.0,        # Hindi slang: bad
-    "chalu": -1.0,        # Hindi slang: mediocre/fake
+    "bekar": -2.0,
+    "ganda": -2.0,
+    "chalu": -1.0,
     "top notch": 3.0,
     "underrated": 1.5,
     "overrated": -1.5,
 }
 analyser.lexicon.update(custom_lexicon)
 
+
 def get_sentiment_score(text: str) -> float:
-    """Returns compound score: -1 (negative) to +1 (positive)"""
+    """Returns VADER compound score: -1 (negative) to +1 (positive)."""
     scores = analyser.polarity_scores(text)
     return scores["compound"]
 
-import re
 
-# ── Filter out noise: rank/cutoff query posts ─────────────
+# ── Noise filtering ────────────────────────────────────────
+# GATE/NIT discussion threads are dominated by students
+# asking "will I get in with this rank/percentile" — these
+# carry no real sentiment about exam difficulty or NIT
+# quality and pollute the average if left in. We filter
+# them out before scoring.
 
 NOISE_PATTERNS = [
     r'\bpercentile\b',
@@ -58,23 +82,19 @@ NOISE_PATTERNS = [
     r'\bkya\b.*\?$',
 ]
 
+
 def is_noise_post(text: str) -> bool:
-    """
-    Returns True if post looks like an admission
-    rank/cutoff query rather than a genuine opinion.
-    """
+    """Returns True if a post looks like a rank/cutoff query
+    rather than a genuine opinion about difficulty or quality."""
     text_lower = text.lower().strip()
 
-    # Too short to have real sentiment
     if len(text_lower) < 25:
         return True
 
-    # Mostly digits (rank numbers)
     digit_ratio = sum(c.isdigit() for c in text_lower) / max(len(text_lower), 1)
     if digit_ratio > 0.15:
         return True
 
-    # Matches known noise patterns
     for pattern in NOISE_PATTERNS:
         if re.search(pattern, text_lower):
             return True
@@ -83,10 +103,13 @@ def is_noise_post(text: str) -> bool:
 
 
 def filter_opinion_posts(posts: list) -> list:
-    """Keep only posts likely to contain real opinions."""
+    """Keep only posts likely to contain a real opinion."""
     return [p for p in posts if not is_noise_post(p)]
 
-# ── PaGaLGuY scraper ──────────────────────────────────────
+
+# ── PaGaLGuY scraper ─────────────────────────────────────────
+# Public discussion forum, no login required to read.
+# Scraped respectfully with a delay between requests.
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -94,10 +117,9 @@ HEADERS = {
                   "Chrome/120.0 Safari/537.36"
 }
 
+
 def search_pagalguy(query: str, max_results: int = 20):
-    """
-    Search PaGaLGuY for a query and return thread URLs.
-    """
+    """Search PaGaLGuY for a query and return thread URLs."""
     search_url = f"https://www.pagalguy.com/search?q={query.replace(' ', '+')}"
     try:
         res = requests.get(search_url, headers=HEADERS, timeout=10)
@@ -117,35 +139,29 @@ def search_pagalguy(query: str, max_results: int = 20):
 
 
 def scrape_pagalguy_thread(url: str):
-    """
-    Scrape post text from a single PaGaLGuY thread page.
-    """
+    """Scrape post text blocks from a single PaGaLGuY thread page."""
     if not url.startswith("http"):
         url = "https://www.pagalguy.com" + url
 
     try:
-        time.sleep(2)  # respectful delay
+        time.sleep(2)  # respectful delay between requests
         res = requests.get(url, headers=HEADERS, timeout=10)
         soup = BeautifulSoup(res.text, "html.parser")
 
         posts = []
-        # Generic selectors — forum posts usually in <p> or
-        # message-body style divs
         for tag in soup.find_all(["p", "div"], class_=True):
             text = tag.get_text(strip=True)
-            if len(text) > 40:  # skip short/nav text
+            if len(text) > 40:
                 posts.append(text)
 
-        return posts[:10]  # limit per thread
+        return posts[:10]
     except Exception as e:
         print(f"Error scraping thread {url}: {e}")
         return []
 
 
 def fetch_pagalguy_posts(query: str, max_threads: int = 10):
-    """
-    Full pipeline: search PaGaLGuY, scrape each thread found.
-    """
+    """Search PaGaLGuY, scrape each matching thread found."""
     thread_links = search_pagalguy(query, max_threads)
     all_posts = []
     for link in thread_links:
@@ -154,7 +170,12 @@ def fetch_pagalguy_posts(query: str, max_threads: int = 10):
     return all_posts
 
 
-# ── YouTube Data API ──────────────────────────────────────
+# ── YouTube Data API ──────────────────────────────────────────
+# Official Google API. Free tier: 10,000 units/day,
+# ~100 units per search call. Quota resets daily.
+
+_youtube_quota_exhausted = False
+
 
 def get_youtube_client():
     api_key = os.getenv("YOUTUBE_API_KEY")
@@ -162,10 +183,13 @@ def get_youtube_client():
 
 
 def search_youtube_videos(query: str, max_results: int = 5):
-    """
-    Search YouTube for videos matching query.
-    Returns list of video IDs.
-    """
+    """Search YouTube for videos matching query. Returns video IDs.
+    Stops attempting further calls once daily quota is exhausted."""
+    global _youtube_quota_exhausted
+
+    if _youtube_quota_exhausted:
+        return []
+
     youtube = get_youtube_client()
     try:
         request = youtube.search().list(
@@ -181,14 +205,27 @@ def search_youtube_videos(query: str, max_results: int = 5):
             for item in response.get("items", [])
         ]
     except Exception as e:
-        print(f"Error searching YouTube for '{query}': {e}")
+        error_str = str(e)
+        if "quotaExceeded" in error_str or "rateLimitExceeded" in error_str:
+            if not _youtube_quota_exhausted:
+                print("  ⚠️ YouTube daily quota exhausted — "
+                      "skipping YouTube for remaining NITs this run "
+                      "(falling back to PaGaLGuY only). Quota resets daily.")
+            _youtube_quota_exhausted = True
+            return []
+        elif "commentsDisabled" not in error_str:
+            print(f"  YouTube search error for '{query}': {error_str[:120]}")
         return []
 
 
 def fetch_youtube_comments(video_id: str, max_comments: int = 50):
-    """
-    Fetch top-level comments from a YouTube video.
-    """
+    """Fetch top-level comments from a YouTube video.
+    Silently skips videos with comments disabled or on quota exhaustion."""
+    global _youtube_quota_exhausted
+
+    if _youtube_quota_exhausted:
+        return []
+
     youtube = get_youtube_client()
     comments = []
     try:
@@ -204,14 +241,16 @@ def fetch_youtube_comments(video_id: str, max_comments: int = 50):
             text = item["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
             comments.append(text)
     except Exception as e:
-        print(f"Error fetching comments for video {video_id}: {e}")
+        error_str = str(e)
+        if "quotaExceeded" in error_str or "rateLimitExceeded" in error_str:
+            _youtube_quota_exhausted = True
+        elif "commentsDisabled" not in error_str:
+            print(f"  Comment fetch error for video {video_id}: {error_str[:120]}")
     return comments
 
 
 def fetch_youtube_posts(query: str, max_videos: int = 5):
-    """
-    Full pipeline: search YouTube, fetch comments from each video.
-    """
+    """Search YouTube, fetch comments from each video found."""
     video_ids = search_youtube_videos(query, max_videos)
     all_comments = []
     for vid in video_ids:
@@ -221,12 +260,11 @@ def fetch_youtube_posts(query: str, max_videos: int = 5):
     return all_comments
 
 
-# ── Combined fetch: GATE difficulty ───────────────────────
+# ── Combined fetch: GATE difficulty ───────────────────────────
 
 def fetch_gate_difficulty_posts(year: int):
-    """
-    Combine PaGaLGuY + YouTube for GATE difficulty posts.
-    """
+    """Combine PaGaLGuY + YouTube posts discussing a GATE year's
+    difficulty. Tags each post with its source for transparency."""
     queries = [
         f"GATE {year} paper analysis difficulty",
         f"GATE {year} exam review students reaction",
@@ -234,33 +272,25 @@ def fetch_gate_difficulty_posts(year: int):
     ]
 
     all_posts = []
-
     for q in queries:
-        pagalguy_posts = fetch_pagalguy_posts(q, max_threads=4)
-        for p in pagalguy_posts:
+        for p in fetch_pagalguy_posts(q, max_threads=4):
             all_posts.append({"text": p, "source": "PaGaLGuY"})
-
-        youtube_posts = fetch_youtube_posts(q, max_videos=3)
-        for p in youtube_posts:
+        for p in fetch_youtube_posts(q, max_videos=3):
             all_posts.append({"text": p, "source": "YouTube"})
 
-    filtered = [
-        p for p in all_posts
-        if not is_noise_post(p["text"])
-    ]
+    filtered = [p for p in all_posts if not is_noise_post(p["text"])]
 
     print(f"Fetched {len(all_posts)} raw posts for GATE {year}, "
           f"{len(filtered)} kept after noise filtering")
     return filtered
 
 
-# ── Combined fetch: NIT reviews ───────────────────────────
+# ── Combined fetch: NIT reviews ─────────────────────────────────
 
 def fetch_nit_review_posts(nit_name: str):
-    """
-    Combine PaGaLGuY + YouTube for NIT review posts.
-    Targets genuine opinions, not admission queries.
-    """
+    """Combine PaGaLGuY + YouTube posts discussing a specific
+    NIT's placements, campus, and faculty. Tags source for
+    transparency."""
     queries = [
         f"{nit_name} hostel life experience",
         f"{nit_name} campus tour vlog",
@@ -271,30 +301,27 @@ def fetch_nit_review_posts(nit_name: str):
     ]
 
     all_posts = []
-
     for q in queries:
-        pagalguy_posts = fetch_pagalguy_posts(q, max_threads=4)
-        for p in pagalguy_posts:
+        for p in fetch_pagalguy_posts(q, max_threads=4):
             all_posts.append({"text": p, "source": "PaGaLGuY"})
-
-        youtube_posts = fetch_youtube_posts(q, max_videos=2)
-        for p in youtube_posts:
+        for p in fetch_youtube_posts(q, max_videos=2):
             all_posts.append({"text": p, "source": "YouTube"})
 
-    # Filter out noise (rank/cutoff queries)
-    filtered = [
-        p for p in all_posts
-        if not is_noise_post(p["text"])
-    ]
+    filtered = [p for p in all_posts if not is_noise_post(p["text"])]
 
     print(f"Fetched {len(all_posts)} raw posts for {nit_name}, "
           f"{len(filtered)} kept after noise filtering")
     return filtered
 
 
-# ── Calculate GATE difficulty score ──────────────────────
+# ── Score calculation: GATE difficulty ────────────────────────
 
 def calculate_gate_difficulty(year: int) -> dict:
+    """
+    Returns a difficulty score (0-10) for a GATE year, derived
+    from average VADER sentiment across collected posts.
+    10 = very hard, 0 = very easy.
+    """
     posts = fetch_gate_difficulty_posts(year)
 
     if not posts:
@@ -309,6 +336,10 @@ def calculate_gate_difficulty(year: int) -> dict:
 
     scores = [get_sentiment_score(p["text"]) for p in posts]
     avg_sentiment = sum(scores) / len(scores)
+
+    # Negative sentiment about the paper = harder exam;
+    # positive sentiment = easier exam. Map -1..+1 sentiment
+    # to a 0..10 difficulty scale (inverted).
     difficulty = round((1 - avg_sentiment) / 2 * 10, 1)
     difficulty = max(0.0, min(10.0, difficulty))
 
@@ -323,13 +354,14 @@ def calculate_gate_difficulty(year: int) -> dict:
     else:
         label = "Easy"
 
-    sample_posts = []
-    for i, post in enumerate(posts[:15]):
-        sample_posts.append({
+    sample_posts = [
+        {
             "text": post["text"][:300],
             "source": post["source"],
             "sentiment_score": round(scores[i], 3)
-        })
+        }
+        for i, post in enumerate(posts[:15])
+    ]
 
     return {
         "year": year,
@@ -341,9 +373,15 @@ def calculate_gate_difficulty(year: int) -> dict:
         "sample_posts": sample_posts
     }
 
-# ── Calculate NIT quality score ───────────────────────────
+
+# ── Score calculation: NIT quality ────────────────────────────
 
 def calculate_nit_quality(nit_name: str, nit_code: str) -> dict:
+    """
+    Returns a quality score (0-10) for a NIT, broken into
+    placement, campus, and faculty sub-scores, derived from
+    VADER sentiment on topic-categorised posts.
+    """
     posts = fetch_nit_review_posts(nit_name)
 
     if not posts:
@@ -380,7 +418,7 @@ def calculate_nit_quality(nit_name: str, nit_code: str) -> dict:
             return 6.0
         scores = [get_sentiment_score(p["text"]) for p in target]
         avg = sum(scores) / len(scores)
-        return round((avg + 1) / 2 * 10, 1)
+        return round((avg + 1) / 2 * 10, 1)  # map -1..+1 to 0..10
 
     placement = avg_score(placement_posts, posts)
     campus    = avg_score(campus_posts, posts)
@@ -396,13 +434,14 @@ def calculate_nit_quality(nit_name: str, nit_code: str) -> dict:
     else:
         label = "Poor"
 
-    sample_posts = []
-    for post in posts[:15]:
-        sample_posts.append({
+    sample_posts = [
+        {
             "text": post["text"][:300],
             "source": post["source"],
             "sentiment_score": round(get_sentiment_score(post["text"]), 3)
-        })
+        }
+        for post in posts[:15]
+    ]
 
     return {
         "nit_code": nit_code,

@@ -1,10 +1,81 @@
+import statistics
 from fastapi import APIRouter, HTTPException
 from app.database import get_db
 from app.auth import decode_token
 
 router = APIRouter()
 
-def score_nit_programme(nit, programme, student, sentiment_lookup=None):
+
+async def get_predicted_closing_score(db, institute_code: str,
+                                        branch_code: str, category: str):
+    """
+    Returns (most_recent_year_score, std_dev_across_years, years_of_data).
+    Uses ONLY the most recent year's closing score directly —
+    NOT an average or weighted estimate. This is a historical
+    reference point, not a prediction. A real predictive model
+    (Phase 3, trained on full CCMT dataset) will replace this.
+    """
+    records = await db["ccmt_cutoffs"].find({
+        "institute_code": institute_code,
+        "branch_code": branch_code,
+        "category": category
+    }, {"_id": 0}).to_list(length=1000)
+
+    if not records:
+        return None, None, 0
+
+    by_year = {}
+    for r in records:
+        year = r["year"]
+        score = r["min_score"]
+        if score is None:
+            continue
+        if year not in by_year or score < by_year[year]:
+            by_year[year] = score
+
+    if not by_year:
+        return None, None, 0
+
+    most_recent_year = max(by_year.keys())
+    reference_score = by_year[most_recent_year]
+
+    scores = list(by_year.values())
+    years_available = len(scores)
+    std_dev = statistics.pstdev(scores) if len(scores) > 1 else reference_score * 0.08
+    std_dev = max(std_dev, 8.0)
+
+    return round(reference_score, 1), round(std_dev, 1), years_available
+
+
+def probability_from_zscore(gate_score: float, predicted: float, std_dev: float) -> int:
+    """
+    Converts how far the student's score is from the predicted
+    closing score (in standard deviations) into an admission
+    probability. This replaces flat +/-offset thresholds and
+    properly differentiates Safe/Target/Ambitious based on
+    actual historical volatility per NIT+branch+category.
+    """
+    z = (gate_score - predicted) / std_dev
+
+    if z >= 1.5:
+        return 95
+    elif z >= 1.0:
+        return 85
+    elif z >= 0.5:
+        return 70
+    elif z >= 0.0:
+        return 55
+    elif z >= -0.5:
+        return 40
+    elif z >= -1.0:
+        return 25
+    elif z >= -1.5:
+        return 12
+    else:
+        return 5
+
+
+async def score_nit_programme(db, nit, programme, student, sentiment_lookup=None):
 
     gate_score = student.get("gate_score", 0)
     category = student.get("category", "UR").upper()
@@ -16,42 +87,24 @@ def score_nit_programme(nit, programme, student, sentiment_lookup=None):
     }
     cat_key = cat_map.get(category, "UR")
 
-    # Dummy closing scores per programme per category
-    dummy_closing = {
-        "NITSLR_CSE": {"UR":600,"OBC":578,"SC":530,"ST":480,"EWS":592},
-        "NITSLR_AI":  {"UR":588,"OBC":565,"SC":518,"ST":468,"EWS":580},
-        "NITSLR_DS":  {"UR":575,"OBC":552,"SC":505,"ST":455,"EWS":568},
-        "NITRK_CSE":  {"UR":645,"OBC":618,"SC":565,"ST":510,"EWS":635},
-        "NITRK_AI":   {"UR":632,"OBC":605,"SC":552,"ST":498,"EWS":622},
-        "NITT_CSE":   {"UR":658,"OBC":628,"SC":575,"ST":522,"EWS":648},
-        "NITT_DS":    {"UR":642,"OBC":612,"SC":560,"ST":508,"EWS":632},
-        "NITW_CSE":   {"UR":668,"OBC":638,"SC":585,"ST":532,"EWS":658},
-        "NITW_AI":    {"UR":655,"OBC":625,"SC":572,"ST":520,"EWS":645},
-        "NITW_DS":    {"UR":645,"OBC":615,"SC":562,"ST":510,"EWS":635},
-        "NITC_CSE":   {"UR":638,"OBC":610,"SC":558,"ST":505,"EWS":628},
-        "NITC_IT":    {"UR":622,"OBC":595,"SC":542,"ST":490,"EWS":612},
-    }
-
+    nit_code = nit.get("nit_code", "")
     prog_id = programme.get("program_id", "")
-    predicted_closing = dummy_closing.get(prog_id, {}).get(cat_key, 999)
+    branch = programme.get("short_name", "")
+
+    predicted_closing, std_dev, years_available = await get_predicted_closing_score(
+        db, nit_code, branch, cat_key
+    )
+
+    if predicted_closing is None:
+        return None  # no historical data for this combination
 
     # Check GATE paper eligibility
     student_paper = student.get("gate_paper", "CS").upper()
     accepted_papers = programme.get("gate_papers", ["CS"])
     if student_paper not in accepted_papers:
-        return None  # Not eligible for this programme
+        return None
 
-    # Probability calculation
-    if gate_score >= predicted_closing + 20:
-        probability = 95
-    elif gate_score >= predicted_closing:
-        probability = 70
-    elif gate_score >= predicted_closing - 15:
-        probability = 45
-    elif gate_score >= predicted_closing - 30:
-        probability = 25
-    else:
-        probability = 5
+    probability = probability_from_zscore(gate_score, predicted_closing, std_dev)
 
     # Factor 1: Probability (40pts)
     factor1 = (probability / 100) * 40
@@ -69,12 +122,11 @@ def score_nit_programme(nit, programme, student, sentiment_lookup=None):
     else:
         factor2 = 4
 
-    # Factor 3: Sentiment (15pts) — uses real data if available
-    nit_code = nit.get("nit_code", "")
+    # Factor 3: Sentiment (15pts)
     if sentiment_lookup and nit_code in sentiment_lookup:
         sentiment = sentiment_lookup[nit_code]
     else:
-        sentiment = 6.0  # fallback default
+        sentiment = 6.0
     factor3 = (sentiment / 10) * 15
 
     # Factor 4: Location (15pts)
@@ -89,7 +141,6 @@ def score_nit_programme(nit, programme, student, sentiment_lookup=None):
 
     # Factor 5: Branch match (10pts)
     branch_priorities = student.get("branch_priorities", [])
-    branch = programme.get("short_name", "")
     factor5 = 0
     if branch in branch_priorities:
         idx = branch_priorities.index(branch)
@@ -102,13 +153,11 @@ def score_nit_programme(nit, programme, student, sentiment_lookup=None):
         else:
             factor5 = 4
 
-    # Home state bonus
     home_nit = student.get("home_state_nit", "")
     home_bonus = 5 if nit.get("name") == home_nit else 0
 
     total = factor1 + factor2 + factor3 + factor4 + factor5 + home_bonus
 
-    # Bucket
     if probability >= 80:
         bucket = "Safe"
     elif probability >= 40:
@@ -125,7 +174,11 @@ def score_nit_programme(nit, programme, student, sentiment_lookup=None):
         "location": nit.get("location"),
         "region": nit.get("region"),
         "nirf_rank": nirf,
-        "predicted_closing_score": predicted_closing,
+        # "predicted_closing_score": predicted_closing,
+        "reference_closing_score": predicted_closing,
+        "reference_year": None,  # optionally track this if you want it shown
+        "score_volatility": std_dev,
+        "years_of_data": years_available,
         "your_score": gate_score,
         "category": cat_key,
         "admission_probability": probability,
@@ -148,13 +201,6 @@ def score_nit_programme(nit, programme, student, sentiment_lookup=None):
 async def get_recommendations(token: str):
     db = get_db()
 
-    # Fetch real sentiment scores once
-    sentiment_docs = await db["nit_sentiment"].find({}, {"_id": 0}).to_list(length=100)
-    sentiment_lookup = {
-        doc["nit_code"]: doc["overall_score"]
-        for doc in sentiment_docs
-    }
-
     payload = decode_token(token)
     email = payload.get("sub")
 
@@ -172,17 +218,23 @@ async def get_recommendations(token: str):
             detail="Please complete your profile first"
         )
 
+    sentiment_docs = await db["nit_sentiment"].find({}, {"_id": 0}).to_list(length=100)
+    sentiment_lookup = {
+        doc["nit_code"]: doc["overall_score"]
+        for doc in sentiment_docs
+    }
+
     nits = await db["nits"].find({}, {"_id": 0}).to_list(length=100)
 
-    # Score every NIT × programme combination
     scored = []
     for nit in nits:
         for programme in nit.get("mtech_programs", []):
-            result = score_nit_programme(nit, programme, student, sentiment_lookup)
-            if result:  # None means not eligible (wrong GATE paper)
+            result = await score_nit_programme(
+                db, nit, programme, student, sentiment_lookup
+            )
+            if result:
                 scored.append(result)
 
-    # Sort by total score
     scored.sort(key=lambda x: x["total_score"], reverse=True)
 
     safe      = [n for n in scored if n["bucket"] == "Safe"]

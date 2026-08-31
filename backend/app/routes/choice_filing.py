@@ -26,16 +26,11 @@ def generate_preference_list(safe, target, ambitious, student):
     counter = 1
     branch_priorities = student.get("branch_priorities", [])
 
-    def get_branch_priority(branch):
-        try:
-            return branch_priorities.index(branch.upper())
-        except ValueError:
-            return 999
-
     def sort_by_branch(items):
         return sorted(
             items,
-            key=lambda x: get_branch_priority(x.get("branch", ""))
+            key=lambda x: x.get("total_score", 0),
+            reverse=True
         )
 
     for nit in sort_by_branch(ambitious):
@@ -101,7 +96,9 @@ async def get_scored_nits(student, db):
     scored = []
     for nit in nits:
         for programme in nit.get("mtech_programs", []):
-            result = score_nit_programme(nit, programme, student, sentiment_lookup)
+            result = await score_nit_programme(
+                db, nit, programme, student, sentiment_lookup
+            )
             if result:
                 scored.append(result)
 
@@ -362,7 +359,7 @@ async def advisor(
                     doc["nit_code"]: doc["overall_score"]
                     for doc in sentiment_docs
                 }
-                result = score_nit_programme(nit, prog, student, sentiment_lookup)
+                result = await score_nit_programme(db, nit, prog, student, sentiment_lookup)
                 if result:
                     p = result.get("admission_probability", 0)
                     if p > probability:

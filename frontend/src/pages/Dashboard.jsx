@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext'
 import {
   getRecommendations,
   getChoiceFilingPart1,
-  getChoiceFilingPart2
+  getChoiceFilingPart2, 
+  getAllNits
 } from '../services/api'
 
 // ---------- NIT Card ----------
@@ -62,7 +63,11 @@ function NITCard({ nit, rank }) {
             <p className="text-xs text-gray-500 mt-0.5">
               {nit.location} · NIRF #{nit.nirf_rank}
             </p>
-          </div>
+            <p className="text-xs text-blue-500 mt-2">
+              ⚠️ Scores shown are actual 2025 CCMT closing scores, not predictions.
+              A trained prediction model is planned for a future phase.
+            </p>
+              </div>
         </div>
 
         <div className="text-right flex-shrink-0">
@@ -76,9 +81,11 @@ function NITCard({ nit, rank }) {
       {/* Score info */}
       <div className="flex gap-4 mt-3 px-8">
         <div>
-          <p className="text-xs text-gray-400">Predicted Closing</p>
+          {/* <p className="text-xs text-gray-400">Predicted Closing</p> */}
+          <p className="text-xs text-gray-400">2025 Closing Score (historical)</p>
           <p className="text-sm font-semibold text-gray-800">
-            {nit.predicted_closing_score}
+            {/* {nit.predicted_closing_score} */}
+            {nit.reference_closing_score}
           </p>
         </div>
         <div>
@@ -187,6 +194,33 @@ function ChoiceFilingList({ token }) {
   const [gotSeat, setGotSeat] = useState(null)
   const [frozenAt, setFrozenAt] = useState(null)
 
+  // NEW: dynamic NIT/branch lists fetched from real data
+  const [nitList, setNitList] = useState([])
+  const [branchOptions, setBranchOptions] = useState([])
+
+  useEffect(() => {
+    fetchNitOptions()
+  }, [])
+
+  const fetchNitOptions = async () => {
+    try {
+      const res = await getAllNits()
+      const nits = res.data.nits
+
+      setNitList(nits.map(n => n.name).sort())
+
+      const branchSet = new Set()
+      nits.forEach(n => {
+        (n.mtech_programs || []).forEach(p => {
+          branchSet.add(p.short_name)
+        })
+      })
+      setBranchOptions(Array.from(branchSet).sort())
+    } catch (err) {
+      console.error('Could not load NIT list', err)
+    }
+  }
+
   // ── API calls ──────────────────────────────────────────
 
   const fetchPart1 = async () => {
@@ -232,36 +266,22 @@ function ChoiceFilingList({ token }) {
   // ── Tab switching ──────────────────────────────────────
 
   const switchPart = (part) => {
-    // Only Part 3 gets locked — when frozen in Part 2
     if (frozenAt === 'part2' && part === 'part3') return
     setActivePart(part)
     setList(null)
     setCurrentAllocation('')
     setGotSeat(null)
-    // Never reset frozenAt when switching tabs
-    // frozenAt persists across tab switches
   }
 
   // ── Tab disabled check ─────────────────────────────────
 
   const isTabDisabled = (part) => {
-    // Only Part 3 gets disabled — and only when frozen in Part 2
     if (frozenAt === 'part2' && part === 'part3') return true
     return false
   }
 
-  // ── Shared NIT + Branch dropdowns ─────────────────────
-
-  const NITOptions = [
-    'NIT Silchar', 'NIT Rourkela', 'NIT Trichy',
-    'NIT Warangal', 'NIT Calicut'
-  ]
-
-  const BranchOptions = [
-    'CSE', 'AI', 'DS', 'IT',
-    'ML', 'CY', 'SE', 'DE', 'IS', 'HCI'
-  ]
-
+  // CHANGED: dropdowns now use nitList/branchOptions state
+  // instead of the old hardcoded NITOptions/BranchOptions arrays
   const AllocationDropdowns = () => (
     <div className="flex gap-2">
       <select
@@ -274,7 +294,7 @@ function ChoiceFilingList({ token }) {
         className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
       >
         <option value="">Select NIT</option>
-        {NITOptions.map(n => (
+        {nitList.map(n => (
           <option key={n} value={n}>{n}</option>
         ))}
       </select>
@@ -287,7 +307,7 @@ function ChoiceFilingList({ token }) {
         className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
       >
         <option value="">Select Branch</option>
-        {BranchOptions.map(b => (
+        {branchOptions.map(b => (
           <option key={b} value={b}>{b}</option>
         ))}
       </select>
@@ -968,7 +988,7 @@ export default function Dashboard() {
                   🟢 Safe Choices
                 </h2>
                 {data.safe.map((nit, i) => (
-                  <NITCard key={nit.nit_code} nit={nit} rank={i + 1} />
+                  <NITCard key={nit.programme_id} nit={nit} rank={i + 1} />
                 ))}
               </div>
             )}
@@ -980,7 +1000,7 @@ export default function Dashboard() {
                 </h2>
                 {data.target.map((nit, i) => (
                   <NITCard
-                    key={nit.nit_code}
+                    key={nit.programme_id}
                     nit={nit}
                     rank={data.safe.length + i + 1}
                   />
@@ -995,7 +1015,7 @@ export default function Dashboard() {
                 </h2>
                 {data.ambitious.map((nit, i) => (
                   <NITCard
-                    key={nit.nit_code}
+                    key={nit.programme_id}
                     nit={nit}
                     rank={data.safe.length + data.target.length + i + 1}
                   />
