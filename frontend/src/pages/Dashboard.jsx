@@ -110,7 +110,10 @@ function NITCard({ nit, rank }) {
 
       {/* Expand button */}
       <button
-        onClick={() => setExpanded(!expanded)}
+        onClick={(e) => {
+          e.stopPropagation()
+          setExpanded(!expanded)
+        }}
         className="text-xs text-blue-600 hover:underline mt-3 px-8"
       >
         {expanded ? 'Hide breakdown ▲' : 'View score breakdown ▼'}

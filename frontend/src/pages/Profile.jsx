@@ -1,228 +1,255 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import {
   saveGATEDetails,
   savePersonalDetails,
   saveBranchPreferences,
   saveLocationPreferences,
   saveConstraints,
-  getProfile
-} from '../services/api'
+  getProfile,
+} from "../services/api";
 
 const STEPS = [
-  'GATE Details',
-  'Personal Details',
-  'Branch Preferences',
-  'Location',
-  'Constraints'
-]
+  "GATE Details",
+  "Personal Details",
+  "Branch Preferences",
+  "Location",
+  "Constraints",
+];
 
-const CATEGORIES = ['UR', 'OBC', 'SC', 'ST', 'EWS']
-const BRANCHES = [
-  { code: 'CSE', name: 'Computer Science & Engineering' },
-  { code: 'AI',  name: 'Artificial Intelligence' },
-  { code: 'DS',  name: 'Data Science & Engineering' },
-  { code: 'IT',  name: 'Information Technology' },
-  { code: 'ML',  name: 'Machine Learning' },
-  { code: 'CY',  name: 'Cyber Security' },
-  { code: 'SE',  name: 'Software Engineering' },
-  { code: 'DE',  name: 'Data Engineering' },
-  { code: 'IS',  name: 'Information Security' },
-  { code: 'HCI', name: 'Human Computer Interaction' },
-]
-const REGIONS = ['East India', 'West India', 'North India', 'South India', 'Any']
+const CATEGORIES = ["UR", "OBC", "SC", "ST", "EWS"];
+
+// Fallback shown only until the real branch list loads from
+// the backend (prevents a blank Step 2 on first render)
+const FALLBACK_BRANCHES = [
+  { code: "CSE", name: "Computer Science & Engineering" },
+];
+
+const REGIONS = [
+  "East India",
+  "West India",
+  "North India",
+  "South India",
+  "Any",
+];
 
 export default function Profile() {
-  const { token } = useAuth()
-  const navigate = useNavigate()
+  const { token } = useAuth();
+  const navigate = useNavigate();
 
-  const [step, setStep] = useState(0)
-  const [loading, setLoading] = useState(false)
-  const [fetching, setFetching] = useState(true)
-  const [error, setError] = useState('')
-  const [homeNIT, setHomeNIT] = useState('')
-  const [isEditing, setIsEditing] = useState(false)
+  const [step, setStep] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
+  const [error, setError] = useState("");
+  const [homeNIT, setHomeNIT] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+
+  // Dynamic branch list — fetched from real NIT data
+  const [branchList, setBranchList] = useState(FALLBACK_BRANCHES);
 
   // Form states — pre-filled with defaults
   const [gate, setGate] = useState({
-    gate_score: '',
+    gate_score: "",
     gate_year: 2026,
-    gate_air: '',
-    category: 'OBC'
-  })
+    gate_air: "",
+    category: "OBC",
+  });
 
   const [personal, setPersonal] = useState({
-    gender: 'Male',
+    gender: "Male",
     pwd_status: false,
-    domicile_state: ''
-  })
+    domicile_state: "",
+  });
 
   const [branches, setBranches] = useState({
-    priorities: ['CSE'],
-    any_branch: false
-  })
+    priorities: ["CSE"],
+    any_branch: false,
+  });
 
   const [location, setLocation] = useState({
-    preferred_region: 'Any',
-    states_to_avoid: []
-  })
+    preferred_region: "Any",
+    states_to_avoid: [],
+  });
 
   const [constraints, setConstraints] = useState({
-    risk_appetite: 'Moderate',
-    mtech_goal: 'Industry',
+    risk_appetite: "Moderate",
+    mtech_goal: "Industry",
     fee_budget: 150000,
     hostel_needed: true,
     has_backlogs: false,
-    btec_cgpa: ''
-  })
+    btec_cgpa: "",
+  });
+
+  // ---------- Load real branch list from backend ----------
+  useEffect(() => {
+    fetch("http://localhost:8000/api/v1/nits")
+      .then((r) => r.json())
+      .then((data) => {
+        const branchSet = new Map();
+        (data.nits || []).forEach((n) => {
+          (n.mtech_programs || []).forEach((p) => {
+            branchSet.set(p.short_name, p.short_name_full || p.short_name);
+          });
+        });
+        const dynamicBranches = Array.from(branchSet, ([code, name]) => ({
+          code,
+          name,
+        })).sort((a, b) => a.code.localeCompare(b.code));
+
+        if (dynamicBranches.length > 0) {
+          setBranchList(dynamicBranches);
+        }
+      })
+      .catch((err) => {
+        console.error("Could not load branch list, using fallback", err);
+      });
+  }, []);
 
   // ---------- Load existing profile on mount ----------
   useEffect(() => {
-    loadExistingProfile()
-  }, [])
+    loadExistingProfile();
+  }, []);
 
   const loadExistingProfile = async () => {
     try {
-      const res = await getProfile(token)
-      const p = res.data
+      const res = await getProfile(token);
+      const p = res.data;
 
       if (p.profile_complete) {
-        setIsEditing(true)
+        setIsEditing(true);
       }
 
-      // Pre-fill GATE details
       if (p.gate_score) {
         setGate({
-          gate_score: p.gate_score ?? '',
+          gate_score: p.gate_score ?? "",
           gate_year: p.gate_year ?? 2026,
-          gate_air: p.gate_air ?? '',
-          category: p.category ?? 'OBC'
-        })
+          gate_air: p.gate_air ?? "",
+          category: p.category ?? "OBC",
+        });
       }
 
-      // Pre-fill personal details
       if (p.gender) {
         setPersonal({
-          gender: p.gender ?? 'Male',
+          gender: p.gender ?? "Male",
           pwd_status: p.pwd_status ?? false,
-          domicile_state: p.domicile_state ?? ''
-        })
+          domicile_state: p.domicile_state ?? "",
+        });
       }
 
-      // Pre-fill branch preferences
       if (p.branch_priorities) {
         setBranches({
-          priorities: p.branch_priorities ?? ['CSE'],
-          any_branch: p.any_branch ?? false
-        })
+          priorities: p.branch_priorities ?? ["CSE"],
+          any_branch: p.any_branch ?? false,
+        });
       }
 
-      // Pre-fill location
       if (p.preferred_region) {
         setLocation({
-          preferred_region: p.preferred_region ?? 'Any',
-          states_to_avoid: p.states_to_avoid ?? []
-        })
+          preferred_region: p.preferred_region ?? "Any",
+          states_to_avoid: p.states_to_avoid ?? [],
+        });
       }
 
-      // Pre-fill constraints
       if (p.risk_appetite) {
         setConstraints({
-          risk_appetite: p.risk_appetite ?? 'Moderate',
-          mtech_goal: p.mtech_goal ?? 'Industry',
+          risk_appetite: p.risk_appetite ?? "Moderate",
+          mtech_goal: p.mtech_goal ?? "Industry",
           fee_budget: p.fee_budget ?? 150000,
           hostel_needed: p.hostel_needed ?? true,
           has_backlogs: p.has_backlogs ?? false,
-          btec_cgpa: p.btec_cgpa ?? ''
-        })
+          btec_cgpa: p.btec_cgpa ?? "",
+        });
       }
 
-      // Set home NIT if exists
       if (p.home_state_nit) {
-        setHomeNIT(p.home_state_nit)
+        setHomeNIT(p.home_state_nit);
       }
-
     } catch (err) {
-      console.error('Could not load profile', err)
+      console.error("Could not load profile", err);
     } finally {
-      setFetching(false)
+      setFetching(false);
     }
-  }
+  };
 
   // ---------- Branch toggle ----------
-  const toggleBranch = (branch) => {
-    setBranches(prev => {
-      if (prev.priorities.includes(branch)) {
+  const toggleBranch = (branchCode) => {
+    setBranches((prev) => {
+      if (prev.priorities.includes(branchCode)) {
         return {
           ...prev,
-          priorities: prev.priorities.filter(b => b !== branch)
-        }
+          priorities: prev.priorities.filter((b) => b !== branchCode),
+        };
       } else {
         return {
           ...prev,
-          priorities: [...prev.priorities, branch]
-        }
+          priorities: [...prev.priorities, branchCode],
+        };
       }
-    })
-  }
+    });
+  };
 
   // ---------- Step submit ----------
   const handleNext = async () => {
-    setLoading(true)
-    setError('')
+    setLoading(true);
+    setError("");
 
     try {
       if (step === 0) {
-        await saveGATEDetails({
-          gate_score: parseFloat(gate.gate_score),
-          gate_year: gate.gate_year,
-          gate_air: gate.gate_air ? parseInt(gate.gate_air) : null,
-          category: gate.category
-        }, token)
+        await saveGATEDetails(
+          {
+            gate_score: parseFloat(gate.gate_score),
+            gate_year: gate.gate_year,
+            gate_air: gate.gate_air ? parseInt(gate.gate_air) : null,
+            category: gate.category,
+          },
+          token,
+        );
       }
 
       if (step === 1) {
-        const res = await savePersonalDetails(personal, token)
+        const res = await savePersonalDetails(personal, token);
         if (res.data.home_state_advantage) {
-          const nit = res.data.home_state_advantage.split(': ')[1]
-          setHomeNIT(nit)
-          setLoading(false)
-          setStep(step+1)
-          return
+          const nit = res.data.home_state_advantage.split(": ")[1];
+          setHomeNIT(nit);
+          setLoading(false);
+          setStep(step + 1);
+          return;
         }
       }
 
       if (step === 2) {
-        await saveBranchPreferences(branches, token)
+        await saveBranchPreferences(branches, token);
       }
 
       if (step === 3) {
-        await saveLocationPreferences(location, token)
+        await saveLocationPreferences(location, token);
       }
 
       if (step === 4) {
-        await saveConstraints({
-          ...constraints,
-          btec_cgpa: constraints.btec_cgpa
-            ? parseFloat(constraints.btec_cgpa)
-            : null,
-          fee_budget: parseInt(constraints.fee_budget)
-        }, token)
-        navigate('/dashboard')
-        return
+        await saveConstraints(
+          {
+            ...constraints,
+            btec_cgpa: constraints.btec_cgpa
+              ? parseFloat(constraints.btec_cgpa)
+              : null,
+            fee_budget: parseInt(constraints.fee_budget),
+          },
+          token,
+        );
+        navigate("/dashboard");
+        return;
       }
 
-      setStep(step + 1)
-
+      setStep(step + 1);
     } catch (err) {
       setError(
-        err.response?.data?.detail || 'Something went wrong. Try again.'
-      )
+        err.response?.data?.detail || "Something went wrong. Try again.",
+      );
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   // ---------- Loading state ----------
   if (fetching) {
@@ -233,18 +260,17 @@ export default function Profile() {
           <p className="text-gray-400 text-sm">Loading your profile...</p>
         </div>
       </div>
-    )
+    );
   }
 
   // ---------- Render ----------
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4">
       <div className="max-w-lg mx-auto">
-
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-blue-900 mb-1">
-            {isEditing ? 'Edit Your Profile' : 'Complete Your Profile'}
+            {isEditing ? "Edit Your Profile" : "Complete Your Profile"}
           </h1>
           <p className="text-gray-400 text-sm">
             Step {step + 1} of {STEPS.length} — {STEPS[step]}
@@ -263,8 +289,8 @@ export default function Profile() {
               key={i}
               onClick={() => i < step && setStep(i)}
               className={`h-1.5 flex-1 rounded-full transition-all ${
-                i <= step ? 'bg-blue-900' : 'bg-gray-200'
-              } ${i < step ? 'cursor-pointer hover:bg-blue-700' : ''}`}
+                i <= step ? "bg-blue-900" : "bg-gray-200"
+              } ${i < step ? "cursor-pointer hover:bg-blue-700" : ""}`}
             />
           ))}
         </div>
@@ -278,8 +304,8 @@ export default function Profile() {
                 onClick={() => setStep(i)}
                 className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
                   step === i
-                    ? 'bg-blue-900 text-white'
-                    : 'bg-white text-gray-500 border border-gray-200 hover:border-blue-300'
+                    ? "bg-blue-900 text-white"
+                    : "bg-white text-gray-500 border border-gray-200 hover:border-blue-300"
                 }`}
               >
                 {s}
@@ -290,7 +316,6 @@ export default function Profile() {
 
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-
           {/* ---------- Step 0: GATE Details ---------- */}
           {step === 0 && (
             <div className="flex flex-col gap-4">
@@ -305,9 +330,12 @@ export default function Profile() {
                 <input
                   type="number"
                   value={gate.gate_score}
-                  onChange={e => setGate({...gate, gate_score: e.target.value})}
+                  onChange={(e) =>
+                    setGate({ ...gate, gate_score: e.target.value })
+                  }
                   placeholder="e.g. 615"
-                  min="0" max="1000"
+                  min="0"
+                  max="1000"
                   className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400"
                 />
               </div>
@@ -319,20 +347,24 @@ export default function Profile() {
                 <input
                   type="number"
                   value={gate.gate_year}
-                  onChange={e => setGate({...gate, gate_year: parseInt(e.target.value)})}
+                  onChange={(e) =>
+                    setGate({ ...gate, gate_year: parseInt(e.target.value) })
+                  }
                   className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400"
                 />
               </div>
 
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">
-                  GATE AIR{' '}
+                  GATE AIR{" "}
                   <span className="text-gray-400 font-normal">(optional)</span>
                 </label>
                 <input
                   type="number"
                   value={gate.gate_air}
-                  onChange={e => setGate({...gate, gate_air: e.target.value})}
+                  onChange={(e) =>
+                    setGate({ ...gate, gate_air: e.target.value })
+                  }
                   placeholder="e.g. 4200"
                   className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400"
                 />
@@ -343,15 +375,15 @@ export default function Profile() {
                   Category
                 </label>
                 <div className="flex gap-2 flex-wrap">
-                  {CATEGORIES.map(cat => (
+                  {CATEGORIES.map((cat) => (
                     <button
                       key={cat}
                       type="button"
-                      onClick={() => setGate({...gate, category: cat})}
+                      onClick={() => setGate({ ...gate, category: cat })}
                       className={`px-4 py-2 rounded-xl border text-sm font-medium transition-all ${
                         gate.category === cat
-                          ? 'bg-blue-900 text-white border-blue-900'
-                          : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
+                          ? "bg-blue-900 text-white border-blue-900"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
                       }`}
                     >
                       {cat}
@@ -374,15 +406,15 @@ export default function Profile() {
                   Gender
                 </label>
                 <div className="flex gap-3">
-                  {['Male', 'Female', 'Other'].map(g => (
+                  {["Male", "Female", "Other"].map((g) => (
                     <button
                       key={g}
                       type="button"
-                      onClick={() => setPersonal({...personal, gender: g})}
+                      onClick={() => setPersonal({ ...personal, gender: g })}
                       className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all ${
                         personal.gender === g
-                          ? 'bg-blue-900 text-white border-blue-900'
-                          : 'bg-white text-gray-600 border-gray-200'
+                          ? "bg-blue-900 text-white border-blue-900"
+                          : "bg-white text-gray-600 border-gray-200"
                       }`}
                     >
                       {g}
@@ -397,44 +429,43 @@ export default function Profile() {
                 </label>
                 <select
                   value={personal.domicile_state}
-                  onChange={e => {
-                    const state = e.target.value
-                    setPersonal({...personal, domicile_state: state})
+                  onChange={(e) => {
+                    const state = e.target.value;
+                    setPersonal({ ...personal, domicile_state: state });
 
-                    // Auto-detect home state NIT immediately
                     const mapping = {
-                      "Andhra Pradesh":   "NIT Andhra Pradesh",
-                      "Assam":            "NIT Silchar",
-                      "Bihar":            "NIT Patna",
-                      "Chhattisgarh":     "NIT Raipur",
-                      "Delhi":            "NIT Delhi",
-                      "Goa":              "NIT Goa",
-                      "Gujarat":          "NIT Surat",
-                      "Haryana":          "NIT Kurukshetra",
+                      "Andhra Pradesh": "NIT Andhra Pradesh",
+                      Assam: "NIT Silchar",
+                      Bihar: "NIT Patna",
+                      Chhattisgarh: "NIT Raipur",
+                      Delhi: "NIT Delhi",
+                      Goa: "NIT Goa",
+                      Gujarat: "NIT Surat",
+                      Haryana: "NIT Kurukshetra",
                       "Himachal Pradesh": "NIT Hamirpur",
-                      "Jharkhand":        "NIT Jamshedpur",
-                      "Karnataka":        "NIT Surathkal",
-                      "Kerala":           "NIT Calicut",
-                      "Madhya Pradesh":   "NIT Bhopal",
-                      "Maharashtra":      "NIT Nagpur",
-                      "Manipur":          "NIT Manipur",
-                      "Meghalaya":        "NIT Meghalaya",
-                      "Mizoram":          "NIT Mizoram",
-                      "Nagaland":         "NIT Nagaland",
-                      "Odisha":           "NIT Rourkela",
-                      "Punjab":           "NIT Jalandhar",
-                      "Rajasthan":        "NIT Jaipur",
-                      "Sikkim":           "NIT Sikkim",
-                      "Tamil Nadu":       "NIT Trichy",
-                      "Telangana":        "NIT Warangal",
-                      "Tripura":          "NIT Agartala",
-                      "Uttar Pradesh":    "NIT Allahabad",
-                      "Uttarakhand":      "NIT Uttarakhand",
-                      "West Bengal":      "NIT Durgapur",
-                    }
+                      Jharkhand: "NIT Jamshedpur",
+                      Karnataka: "NIT Surathkal",
+                      Kerala: "NIT Calicut",
+                      "Madhya Pradesh": "NIT Bhopal",
+                      Maharashtra: "NIT Nagpur",
+                      Manipur: "NIT Manipur",
+                      Meghalaya: "NIT Meghalaya",
+                      Mizoram: "NIT Mizoram",
+                      Nagaland: "NIT Nagaland",
+                      Odisha: "NIT Rourkela",
+                      Punjab: "NIT Jalandhar",
+                      Rajasthan: "NIT Jaipur",
+                      Sikkim: "NIT Sikkim",
+                      "Tamil Nadu": "NIT Trichy",
+                      Telangana: "NIT Warangal",
+                      Tripura: "NIT Agartala",
+                      "Uttar Pradesh": "NIT Allahabad",
+                      Uttarakhand: "NIT Uttarakhand",
+                      "West Bengal": "NIT Durgapur",
+                    };
 
-                    const detected = mapping[state] || null
-                    setHomeNIT(detected || '')
+                    const detected = mapping[state] || null;
+                    setHomeNIT(detected || "");
                   }}
                   className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
                 >
@@ -475,7 +506,9 @@ export default function Profile() {
                   type="checkbox"
                   id="pwd"
                   checked={personal.pwd_status}
-                  onChange={e => setPersonal({...personal, pwd_status: e.target.checked})}
+                  onChange={(e) =>
+                    setPersonal({ ...personal, pwd_status: e.target.checked })
+                  }
                   className="w-4 h-4 accent-blue-900"
                 />
                 <label htmlFor="pwd" className="text-sm text-gray-700">
@@ -498,24 +531,25 @@ export default function Profile() {
                 Branch Preferences
               </h2>
               <p className="text-sm text-gray-400">
-                Select all branches you want.
-                First selected = highest priority.
+                Select all branches you want. First selected = highest priority.
               </p>
 
               <div className="flex gap-2 flex-wrap">
-                {BRANCHES.map(branch => (
+                {branchList.map((branch) => (
                   <button
                     key={branch.code}
                     type="button"
                     onClick={() => toggleBranch(branch.code)}
                     className={`px-3 py-2 rounded-xl border text-xs font-medium transition-all text-left ${
                       branches.priorities.includes(branch.code)
-                        ? 'bg-blue-900 text-white border-blue-900'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
+                        ? "bg-blue-900 text-white border-blue-900"
+                        : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
                     }`}
                   >
                     <span className="block font-semibold">{branch.code}</span>
-                    <span className="block text-xs opacity-75">{branch.name}</span>
+                    <span className="block text-xs opacity-75">
+                      {branch.name}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -526,12 +560,12 @@ export default function Profile() {
                     Your priority order:
                   </p>
                   {branches.priorities.map((b, i) => {
-                    const found = BRANCHES.find(br => br.code === b)
+                    const found = branchList.find((br) => br.code === b);
                     return (
                       <p key={b} className="text-sm text-blue-800">
                         {i + 1}. {b} — {found ? found.name : b}
                       </p>
-                    )
+                    );
                   })}
                 </div>
               )}
@@ -541,7 +575,9 @@ export default function Profile() {
                   type="checkbox"
                   id="any"
                   checked={branches.any_branch}
-                  onChange={e => setBranches({...branches, any_branch: e.target.checked})}
+                  onChange={(e) =>
+                    setBranches({ ...branches, any_branch: e.target.checked })
+                  }
                   className="w-4 h-4 accent-blue-900"
                 />
                 <label htmlFor="any" className="text-sm text-gray-700">
@@ -559,15 +595,17 @@ export default function Profile() {
               </h2>
 
               <div className="flex flex-col gap-2">
-                {REGIONS.map(region => (
+                {REGIONS.map((region) => (
                   <button
                     key={region}
                     type="button"
-                    onClick={() => setLocation({...location, preferred_region: region})}
+                    onClick={() =>
+                      setLocation({ ...location, preferred_region: region })
+                    }
                     className={`w-full py-2.5 rounded-xl border text-sm font-medium text-left px-4 transition-all ${
                       location.preferred_region === region
-                        ? 'bg-blue-900 text-white border-blue-900'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
+                        ? "bg-blue-900 text-white border-blue-900"
+                        : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
                     }`}
                   >
                     {region}
@@ -589,15 +627,17 @@ export default function Profile() {
                   Risk Appetite
                 </label>
                 <div className="flex gap-2">
-                  {['Safe', 'Moderate', 'Ambitious'].map(r => (
+                  {["Safe", "Moderate", "Ambitious"].map((r) => (
                     <button
                       key={r}
                       type="button"
-                      onClick={() => setConstraints({...constraints, risk_appetite: r})}
+                      onClick={() =>
+                        setConstraints({ ...constraints, risk_appetite: r })
+                      }
                       className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all ${
                         constraints.risk_appetite === r
-                          ? 'bg-blue-900 text-white border-blue-900'
-                          : 'bg-white text-gray-600 border-gray-200'
+                          ? "bg-blue-900 text-white border-blue-900"
+                          : "bg-white text-gray-600 border-gray-200"
                       }`}
                     >
                       {r}
@@ -611,15 +651,17 @@ export default function Profile() {
                   M.Tech Goal
                 </label>
                 <div className="flex gap-2">
-                  {['Industry', 'Research', 'Undecided'].map(g => (
+                  {["Industry", "Research", "Undecided"].map((g) => (
                     <button
                       key={g}
                       type="button"
-                      onClick={() => setConstraints({...constraints, mtech_goal: g})}
+                      onClick={() =>
+                        setConstraints({ ...constraints, mtech_goal: g })
+                      }
                       className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all ${
                         constraints.mtech_goal === g
-                          ? 'bg-blue-900 text-white border-blue-900'
-                          : 'bg-white text-gray-600 border-gray-200'
+                          ? "bg-blue-900 text-white border-blue-900"
+                          : "bg-white text-gray-600 border-gray-200"
                       }`}
                     >
                       {g}
@@ -635,22 +677,34 @@ export default function Profile() {
                 <input
                   type="number"
                   value={constraints.fee_budget}
-                  onChange={e => setConstraints({...constraints, fee_budget: e.target.value})}
+                  onChange={(e) =>
+                    setConstraints({
+                      ...constraints,
+                      fee_budget: e.target.value,
+                    })
+                  }
                   className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400"
                 />
               </div>
 
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">
-                  B.Tech CGPA{' '}
+                  B.Tech CGPA{" "}
                   <span className="text-gray-400 font-normal">(optional)</span>
                 </label>
                 <input
                   type="number"
                   value={constraints.btec_cgpa}
-                  onChange={e => setConstraints({...constraints, btec_cgpa: e.target.value})}
+                  onChange={(e) =>
+                    setConstraints({
+                      ...constraints,
+                      btec_cgpa: e.target.value,
+                    })
+                  }
                   placeholder="e.g. 7.8"
-                  step="0.1" min="0" max="10"
+                  step="0.1"
+                  min="0"
+                  max="10"
                   className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400"
                 />
               </div>
@@ -661,7 +715,12 @@ export default function Profile() {
                     type="checkbox"
                     id="hostel"
                     checked={constraints.hostel_needed}
-                    onChange={e => setConstraints({...constraints, hostel_needed: e.target.checked})}
+                    onChange={(e) =>
+                      setConstraints({
+                        ...constraints,
+                        hostel_needed: e.target.checked,
+                      })
+                    }
                     className="w-4 h-4 accent-blue-900"
                   />
                   <label htmlFor="hostel" className="text-sm text-gray-700">
@@ -673,7 +732,12 @@ export default function Profile() {
                     type="checkbox"
                     id="backlogs"
                     checked={constraints.has_backlogs}
-                    onChange={e => setConstraints({...constraints, has_backlogs: e.target.checked})}
+                    onChange={(e) =>
+                      setConstraints({
+                        ...constraints,
+                        has_backlogs: e.target.checked,
+                      })
+                    }
                     className="w-4 h-4 accent-blue-900"
                   />
                   <label htmlFor="backlogs" className="text-sm text-gray-700">
@@ -709,26 +773,26 @@ export default function Profile() {
               className="flex-1 bg-blue-900 text-white font-semibold py-2.5 rounded-xl hover:bg-blue-800 disabled:opacity-50 text-sm"
             >
               {loading
-                ? 'Saving...'
+                ? "Saving..."
                 : step === STEPS.length - 1
-                ? isEditing ? 'Save Changes' : 'Complete Profile'
-                : 'Next'}
+                  ? isEditing
+                    ? "Save Changes"
+                    : "Complete Profile"
+                  : "Next"}
             </button>
           </div>
-
         </div>
 
         {/* Cancel button when editing */}
         {isEditing && (
           <button
-            onClick={() => navigate('/profile-view')}
+            onClick={() => navigate("/profile-view")}
             className="w-full text-gray-400 text-sm mt-4 hover:text-gray-600"
           >
             Cancel — go back to profile
           </button>
         )}
-
       </div>
     </div>
-  )
+  );
 }
