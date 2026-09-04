@@ -65,6 +65,7 @@ export default function Profile() {
   const [branches, setBranches] = useState({
     priorities: ["CSE"],
     any_branch: false,
+    strict_filter: false,
   });
 
   const [location, setLocation] = useState({
@@ -141,6 +142,7 @@ export default function Profile() {
         setBranches({
           priorities: p.branch_priorities ?? ["CSE"],
           any_branch: p.any_branch ?? false,
+          strict_filter: p.strict_filter ?? false,
         });
       }
 
@@ -556,14 +558,25 @@ export default function Profile() {
 
               {branches.priorities.length > 0 && (
                 <div className="bg-blue-50 rounded-xl p-3">
-                  <p className="text-xs text-blue-400 mb-2 font-medium">
-                    Your priority order:
-                  </p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-blue-400 font-medium">
+                      Your priority order:
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setBranches({ ...branches, priorities: [] })
+                      }
+                      className="text-xs text-red-500 hover:text-red-700 font-medium"
+                    >
+                      Reset all
+                    </button>
+                  </div>
                   {branches.priorities.map((b, i) => {
                     const found = branchList.find((br) => br.code === b);
                     return (
-                      <p key={b} className="text-sm text-blue-800">
-                        {i + 1}. {b} — {found ? found.name : b}
+                      <p key={b} className="text-sm text-blue-800 flex items-center justify-between">
+                        <span>{i + 1}. {b} — {found ? found.name : `${b} (invalid — click Reset)`}</span>
                       </p>
                     );
                   })}
@@ -583,6 +596,32 @@ export default function Profile() {
                 <label htmlFor="any" className="text-sm text-gray-700">
                   Any branch is fine
                 </label>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="strict"
+                    checked={branches.strict_filter}
+                    onChange={(e) =>
+                      setBranches({ ...branches, strict_filter: e.target.checked })
+                    }
+                    className="w-4 h-4 accent-blue-900 mt-0.5"
+                  />
+                  <label htmlFor="strict" className="text-sm text-gray-700">
+                    <span className="font-medium block mb-1">
+                      Only show branches I selected above
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      If unchecked, all branches will be shown and ranked
+                      by your preference — this gives you more options
+                      but may include branches you didn't select. If
+                      checked, you'll only see recommendations and
+                      choice filing entries for your selected branches.
+                    </span>
+                  </label>
+                </div>
               </div>
             </div>
           )}

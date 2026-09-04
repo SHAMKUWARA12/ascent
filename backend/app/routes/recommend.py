@@ -141,6 +141,12 @@ async def score_nit_programme(db, nit, programme, student, sentiment_lookup=None
 
     # Factor 5: Branch match (10pts)
     branch_priorities = student.get("branch_priorities", [])
+    strict_filter = student.get("strict_filter", False)
+
+    # If strict filtering is on, exclude branches not selected
+    if strict_filter and branch not in branch_priorities:
+        return None
+    
     factor5 = 0
     if branch in branch_priorities:
         idx = branch_priorities.index(branch)

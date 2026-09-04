@@ -22,6 +22,7 @@ class PersonalDetails(BaseModel):
 class BranchPreferences(BaseModel):
     priorities: List[str]  # ["CSE", "AI", "DS", "IT"]
     any_branch: bool = False
+    strict_filter: bool = False
 
 class LocationPreferences(BaseModel):
     preferred_region: str  # East, West, North, South, Any
@@ -124,7 +125,8 @@ async def save_branch_preferences(data: BranchPreferences, token: str):
         {"email": email},
         {"$set": {
             "branch_priorities": data.priorities,
-            "any_branch": data.any_branch
+            "any_branch": data.any_branch,
+            "strict_filter": data.strict_filter
         }}
     )
     return {"message": "Branch preferences saved successfully"}
