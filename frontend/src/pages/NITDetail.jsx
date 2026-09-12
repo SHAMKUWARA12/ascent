@@ -99,7 +99,13 @@ export default function NITDetail() {
         </button>
         <h1 className="text-2xl font-bold mb-1">{nit.name}</h1>
         <p className="text-blue-200 text-sm">
-          {nit.location} · NIRF #{nit.nirf_rank}
+          {nit.location} ·{' '}
+          {nit.nirf_rank_exact
+            ? `NIRF #${nit.nirf_rank}`
+            : nit.nirf_rank_display
+            ? `NIRF Band ${nit.nirf_rank_display}`
+            : `NIRF #${nit.nirf_rank}`
+          }
         </p>
       </div>
 
@@ -120,10 +126,22 @@ export default function NITDetail() {
             <div>
               <p className="text-xs text-gray-400 mb-1">NIRF Rank</p>
               <p className="font-medium text-gray-800">
-                #{nit.nirf_rank}
-                <span className="text-xs text-amber-600 ml-1">
-                  (approximate — real NIRF scraping pending)
-                </span>
+                {nit.nirf_rank_display
+                  ? nit.nirf_rank_exact
+                    ? `#${nit.nirf_rank_display}`
+                    : `Band ${nit.nirf_rank_display}`
+                  : `#${nit.nirf_rank}`
+                }
+                {nit.nirf_source && (
+                  <span className="text-xs text-green-600 ml-1">
+                    ({nit.nirf_source})
+                  </span>
+                )}
+                {!nit.nirf_source && (
+                  <span className="text-xs text-amber-600 ml-1">
+                    (approximate — NIRF scraping pending)
+                  </span>
+                )}
               </p>
             </div>
             <div>

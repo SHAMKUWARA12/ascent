@@ -110,7 +110,9 @@ async def score_nit_programme(db, nit, programme, student, sentiment_lookup=None
     factor1 = (probability / 100) * 40
 
     # Factor 2: NIRF ranking (20pts)
-    nirf = nit.get("nirf_rank", 50)
+    # nirf_rank can be None for band-only ranked NITs
+    # (e.g. "101-150") — treat None as a mid-range rank
+    nirf = nit.get("nirf_rank") or 125
     if nirf <= 10:
         factor2 = 20
     elif nirf <= 20:
@@ -119,8 +121,10 @@ async def score_nit_programme(db, nit, programme, student, sentiment_lookup=None
         factor2 = 12
     elif nirf <= 50:
         factor2 = 8
+    elif nirf <= 100:
+        factor2 = 5
     else:
-        factor2 = 4
+        factor2 = 3
 
     # Factor 3: Sentiment (15pts)
     if sentiment_lookup and nit_code in sentiment_lookup:
