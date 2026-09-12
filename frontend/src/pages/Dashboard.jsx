@@ -61,7 +61,15 @@ function NITCard({ nit, rank }) {
               </span>
             </div>
             <p className="text-xs text-gray-500 mt-0.5">
-              {nit.location} · NIRF #{nit.nirf_rank}
+              {nit.location} · {
+                nit.nirf_rank_display
+                  ? nit.nirf_rank_exact
+                    ? `NIRF #${nit.nirf_rank_display}`
+                    : `NIRF Band ${nit.nirf_rank_display}`
+                  : nit.nirf_rank
+                  ? `NIRF #${nit.nirf_rank}`
+                  : 'NIRF unranked'
+              }
             </p>
             <p className="text-xs text-blue-500 mt-2">
               ⚠️ Scores shown are actual 2025 CCMT closing scores, not predictions.

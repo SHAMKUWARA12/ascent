@@ -184,6 +184,8 @@ async def score_nit_programme(db, nit, programme, student, sentiment_lookup=None
         "location": nit.get("location"),
         "region": nit.get("region"),
         "nirf_rank": nirf,
+        "nirf_rank_display": nit.get("nirf_rank_display"),
+        "nirf_rank_exact": nit.get("nirf_rank_exact"), 
         # "predicted_closing_score": predicted_closing,
         "reference_closing_score": predicted_closing,
         "reference_year": None,  # optionally track this if you want it shown
