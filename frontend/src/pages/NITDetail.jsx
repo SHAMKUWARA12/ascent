@@ -183,9 +183,19 @@ export default function NITDetail() {
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-3 mt-3 text-xs text-gray-400">
-                <div>Seats: not yet scraped</div>
+                <div>
+                  {prog.seats && prog.seats.total > 0
+                    ? `Total Seats: ${prog.seats.total} (UR:${prog.seats.UR} OBC:${prog.seats.OBC} SC:${prog.seats.SC} ST:${prog.seats.ST})`
+                    : 'Seats: not yet available'
+                  }
+                </div>
                 <div>Fee/Year: not yet scraped</div>
-                <div>Hostel: not yet scraped</div>
+                <div>
+                  {prog.seats_data_type
+                    ? `Data: ${prog.seats_data_type}`
+                    : 'Hostel: not yet scraped'
+                  }
+                </div>
               </div>
             </button>
           ))}
