@@ -165,10 +165,10 @@ export default function NITDetail() {
               className={`w-full text-left border rounded-xl p-4 mb-3 transition-all ${
                 selectedBranch === prog.short_name
                   ? 'border-blue-400 bg-blue-50'
-                  : 'border-gray-100 hover:border-gray-200'
+                  : 'border-gray-300 hover:border-gray-200'
               }`}
             >
-              <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between">
                 <div>
                   <p className="font-medium text-gray-800 text-sm">
                     {prog.official_name}
@@ -182,21 +182,57 @@ export default function NITDetail() {
                   {prog.short_name}
                 </span>
               </div>
-              <div className="grid grid-cols-3 gap-3 mt-3 text-xs text-gray-400">
-                <div>
-                  {prog.seats && prog.seats.total > 0
-                    ? `Total Seats: ${prog.seats.total} (UR:${prog.seats.UR} OBC:${prog.seats.OBC} SC:${prog.seats.SC} ST:${prog.seats.ST})`
-                    : 'Seats: not yet available'
-                  }
+            <div className="mt-4 p-4 rounded-xl bg-gray-50 border border-gray-200 shadow-sm space-y-4">
+            {/* Seat Distribution Section */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs text-gray-600 border-b border-gray-200 pb-3 gap-1">
+              <span className="font-semibold text-gray-700">Seats</span>
+
+              <span className="text-gray-500 sm:ml-6 sm:flex-1">
+                {prog.seats && prog.seats.total > 0
+                  ? `Total: ${prog.seats.total} (UR: ${prog.seats.UR} | OBC: ${prog.seats.OBC} | SC: ${prog.seats.SC} | ST: ${prog.seats.ST})`
+                  : 'Not yet available'}
+              </span>
+            </div>
+
+            {/* Fee Structure Section */}
+            {nit.fee_structure ? (
+              <div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2.5 bg-white border border-gray-200 rounded-lg">
+                    <p className="text-[11px] font-medium text-gray-500">UR/OBC/EWS</p>
+                    <p className="text-sm font-semibold text-gray-900 mt-0.5">
+                      ~₹{(nit.fee_structure.annual_approx_general_obc_ews / 1000).toFixed(0)}k
+                      <span className="text-xs font-normal text-gray-500">/yr</span>
+                    </p>
+                  </div>
+
+                  <div className="p-2.5 bg-white border border-gray-200 rounded-lg">
+                    <p className="text-[11px] font-medium text-gray-500">SC/ST</p>
+                    <p className="text-sm font-semibold text-gray-900 mt-0.5">
+                      ~₹{(nit.fee_structure.annual_approx_sc_st / 1000).toFixed(0)}k
+                      <span className="text-xs font-normal text-gray-500">/yr</span>
+                    </p>
+                  </div>
+
+                  <div className="p-2.5 bg-white border border-gray-200 rounded-lg">
+                    <p className="text-[11px] font-medium text-gray-500">Hostel</p>
+                    <p className="text-sm font-semibold text-emerald-600 mt-0.5">
+                      Available
+                    </p>
+                  </div>
                 </div>
-                <div>Fee/Year: not yet scraped</div>
-                <div>
-                  {prog.seats_data_type
-                    ? `Data: ${prog.seats_data_type}`
-                    : 'Hostel: not yet scraped'
-                  }
-                </div>
+
+                <p className="text-[11px] text-gray-400 mt-2 text-center">
+                  ⚠️ Approx annual fees. Verify at official NIT website.
+                </p>
               </div>
+            ) : (
+              <p className="text-xs text-gray-400 text-center py-2">
+                Fee data not available
+              </p>
+            )}
+          </div>
+
             </button>
           ))}
         </div>
