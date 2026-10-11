@@ -7,26 +7,26 @@ router = APIRouter()
 
 
 async def get_predicted_closing_score(db, institute_code: str,
-                                        branch_code: str, category: str):
+                                      branch_code: str,
+                                      category: str):
     """
-    Returns (most_recent_year_score, std_dev_across_years, years_of_data).
-    Uses ONLY the most recent year's closing score directly —
-    NOT an average or weighted estimate. This is a historical
-    reference point, not a prediction. A real predictive model
-    (Phase 3, trained on full CCMT dataset) will replace this.
+    Returns (most_recent_year_score, std_dev, years_of_data).
+    Uses ONLY the most recent year's closing score as reference —
+    NOT an average. A real predictive model (Phase 3) will replace this.
     """
     records = await db["ccmt_cutoffs"].find({
         "institute_code": institute_code,
-        "branch_code": branch_code,
-        "category": category
+        "branch_code":    branch_code,
+        "category":       category
     }, {"_id": 0}).to_list(length=1000)
 
     if not records:
         return None, None, 0
 
+    # Lowest score per year = that year's final closing score
     by_year = {}
     for r in records:
-        year = r["year"]
+        year  = r["year"]
         score = r["min_score"]
         if score is None:
             continue
@@ -36,25 +36,22 @@ async def get_predicted_closing_score(db, institute_code: str,
     if not by_year:
         return None, None, 0
 
-    most_recent_year = max(by_year.keys())
-    reference_score = by_year[most_recent_year]
+    most_recent_year  = max(by_year.keys())
+    reference_score   = by_year[most_recent_year]
+    years_available   = len(by_year)
 
-    scores = list(by_year.values())
-    years_available = len(scores)
-    std_dev = statistics.pstdev(scores) if len(scores) > 1 else reference_score * 0.08
+    scores  = list(by_year.values())
+    std_dev = (statistics.pstdev(scores)
+               if len(scores) > 1
+               else reference_score * 0.08)
     std_dev = max(std_dev, 8.0)
 
     return round(reference_score, 1), round(std_dev, 1), years_available
 
 
-def probability_from_zscore(gate_score: float, predicted: float, std_dev: float) -> int:
-    """
-    Converts how far the student's score is from the predicted
-    closing score (in standard deviations) into an admission
-    probability. This replaces flat +/-offset thresholds and
-    properly differentiates Safe/Target/Ambitious based on
-    actual historical volatility per NIT+branch+category.
-    """
+def probability_from_zscore(gate_score: float,
+                             predicted: float,
+                             std_dev: float) -> int:
     z = (gate_score - predicted) / std_dev
 
     if z >= 1.5:
@@ -75,10 +72,11 @@ def probability_from_zscore(gate_score: float, predicted: float, std_dev: float)
         return 5
 
 
-async def score_nit_programme(db, nit, programme, student, sentiment_lookup=None):
+async def score_nit_programme(db, nit, programme, student,
+                               sentiment_lookup=None):
 
     gate_score = student.get("gate_score", 0)
-    category = student.get("category", "UR").upper()
+    category   = student.get("category", "UR").upper()
 
     cat_map = {
         "UR": "UR", "GENERAL": "UR",
@@ -88,30 +86,37 @@ async def score_nit_programme(db, nit, programme, student, sentiment_lookup=None
     cat_key = cat_map.get(category, "UR")
 
     nit_code = nit.get("nit_code", "")
-    prog_id = programme.get("program_id", "")
-    branch = programme.get("short_name", "")
+    prog_id  = programme.get("program_id", "")
+    branch   = programme.get("short_name", "")
 
-    predicted_closing, std_dev, years_available = await get_predicted_closing_score(
-        db, nit_code, branch, cat_key
-    )
+    predicted_closing, std_dev, years_available = \
+        await get_predicted_closing_score(
+            db, nit_code, branch, cat_key
+        )
 
     if predicted_closing is None:
-        return None  # no historical data for this combination
+        return None
 
-    # Check GATE paper eligibility
-    student_paper = student.get("gate_paper", "CS").upper()
+    # GATE paper eligibility check
+    student_paper  = student.get("gate_paper", "CS").upper()
     accepted_papers = programme.get("gate_papers", ["CS"])
     if student_paper not in accepted_papers:
         return None
 
-    probability = probability_from_zscore(gate_score, predicted_closing, std_dev)
+    # Strict branch filter
+    branch_priorities = student.get("branch_priorities", [])
+    strict_filter     = student.get("strict_filter", False)
+    if strict_filter and branch not in branch_priorities:
+        return None
+
+    probability = probability_from_zscore(
+        gate_score, predicted_closing, std_dev
+    )
 
     # Factor 1: Probability (40pts)
     factor1 = (probability / 100) * 40
 
-    # Factor 2: NIRF ranking (20pts)
-    # nirf_rank can be None for band-only ranked NITs
-    # (e.g. "101-150") — treat None as a mid-range rank
+    # Factor 2: NIRF rank using nirf_rank_sort (always 1-31)
     nirf_sort = nit.get("nirf_rank_sort") or 31
     if nirf_sort <= 5:
         factor2 = 20
@@ -125,7 +130,6 @@ async def score_nit_programme(db, nit, programme, student, sentiment_lookup=None
         factor2 = 8
     else:
         factor2 = 5
-    nirf = nit.get("nirf_rank")
 
     # Factor 3: Sentiment (15pts)
     if sentiment_lookup and nit_code in sentiment_lookup:
@@ -136,7 +140,7 @@ async def score_nit_programme(db, nit, programme, student, sentiment_lookup=None
 
     # Factor 4: Location (15pts)
     preferred_region = student.get("preferred_region", "Any")
-    nit_region = nit.get("region", "")
+    nit_region       = nit.get("region", "")
     if preferred_region == "Any":
         factor4 = 10
     elif preferred_region.lower() in nit_region.lower():
@@ -145,13 +149,6 @@ async def score_nit_programme(db, nit, programme, student, sentiment_lookup=None
         factor4 = 5
 
     # Factor 5: Branch match (10pts)
-    branch_priorities = student.get("branch_priorities", [])
-    strict_filter = student.get("strict_filter", False)
-
-    # If strict filtering is on, exclude branches not selected
-    if strict_filter and branch not in branch_priorities:
-        return None
-    
     factor5 = 0
     if branch in branch_priorities:
         idx = branch_priorities.index(branch)
@@ -164,10 +161,12 @@ async def score_nit_programme(db, nit, programme, student, sentiment_lookup=None
         else:
             factor5 = 4
 
-    home_nit = student.get("home_state_nit", "")
+    # Home state bonus
+    home_nit   = student.get("home_state_nit", "")
     home_bonus = 5 if nit.get("name") == home_nit else 0
 
-    total = factor1 + factor2 + factor3 + factor4 + factor5 + home_bonus
+    total = (factor1 + factor2 + factor3 +
+             factor4 + factor5 + home_bonus)
 
     if probability >= 80:
         bucket = "Safe"
@@ -176,36 +175,38 @@ async def score_nit_programme(db, nit, programme, student, sentiment_lookup=None
     else:
         bucket = "Ambitious"
 
+    # Display rank (may be None for band NITs)
+    nirf_display = nit.get("nirf_rank")
+
     return {
-        "nit_code": nit_code,
-        "nit_name": nit.get("name"),
-        "programme_id": prog_id,
-        "branch": branch,
-        "branch_full": programme.get("official_name"),
-        "location": nit.get("location"),
-        "region": nit.get("region"),
-        "nirf_rank": nirf,
-        "nirf_rank_display": nit.get("nirf_rank_display"),
-        "nirf_rank_exact": nit.get("nirf_rank_exact"), 
-        # "predicted_closing_score": predicted_closing,
-        "reference_closing_score": predicted_closing,
-        "reference_year": None,  # optionally track this if you want it shown
-        "score_volatility": std_dev,
-        "years_of_data": years_available,
-        "your_score": gate_score,
-        "category": cat_key,
-        "admission_probability": probability,
-        "sentiment_score": sentiment,
-        "total_score": round(total, 1),
-        "bucket": bucket,
-        "home_state": nit.get("name") == home_nit,
+        "nit_code":               nit_code,
+        "nit_name":               nit.get("name"),
+        "programme_id":           prog_id,
+        "branch":                 branch,
+        "branch_full":            programme.get("official_name"),
+        "location":               nit.get("location"),
+        "region":                 nit.get("region"),
+        "nirf_rank":              nirf_display,
+        "nirf_rank_sort":         nirf_sort,
+        "nirf_rank_display":      nit.get("nirf_rank_display"),
+        "nirf_rank_exact":        nit.get("nirf_rank_exact"),
+        "predicted_closing_score": predicted_closing,
+        "score_volatility":       std_dev,
+        "years_of_data":          years_available,
+        "your_score":             gate_score,
+        "category":               cat_key,
+        "admission_probability":  probability,
+        "sentiment_score":        sentiment,
+        "total_score":            round(total, 1),
+        "bucket":                 bucket,
+        "home_state":             nit.get("name") == home_nit,
         "score_breakdown": {
             "probability_factor": round(factor1, 1),
-            "nirf_factor": round(factor2, 1),
-            "sentiment_factor": round(factor3, 1),
-            "location_factor": round(factor4, 1),
-            "branch_factor": round(factor5, 1),
-            "home_bonus": home_bonus
+            "nirf_factor":        round(factor2, 1),
+            "sentiment_factor":   round(factor3, 1),
+            "location_factor":    round(factor4, 1),
+            "branch_factor":      round(factor5, 1),
+            "home_bonus":         home_bonus
         }
     }
 
@@ -215,7 +216,7 @@ async def get_recommendations(token: str):
     db = get_db()
 
     payload = decode_token(token)
-    email = payload.get("sub")
+    email   = payload.get("sub")
 
     student = await db["students"].find_one(
         {"email": email},
@@ -223,7 +224,9 @@ async def get_recommendations(token: str):
     )
 
     if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
+        raise HTTPException(
+            status_code=404, detail="Student not found"
+        )
 
     if not student.get("profile_complete"):
         raise HTTPException(
@@ -231,13 +234,17 @@ async def get_recommendations(token: str):
             detail="Please complete your profile first"
         )
 
-    sentiment_docs = await db["nit_sentiment"].find({}, {"_id": 0}).to_list(length=100)
+    sentiment_docs   = await db["nit_sentiment"].find(
+        {}, {"_id": 0}
+    ).to_list(length=100)
     sentiment_lookup = {
         doc["nit_code"]: doc["overall_score"]
         for doc in sentiment_docs
     }
 
-    nits = await db["nits"].find({}, {"_id": 0}).to_list(length=100)
+    nits = await db["nits"].find(
+        {}, {"_id": 0}
+    ).to_list(length=100)
 
     scored = []
     for nit in nits:
@@ -256,14 +263,14 @@ async def get_recommendations(token: str):
 
     return {
         "student": {
-            "name": student.get("full_name"),
+            "name":       student.get("full_name"),
             "gate_score": student.get("gate_score"),
-            "category": student.get("category"),
-            "domicile": student.get("domicile_state"),
+            "category":   student.get("category"),
+            "domicile":   student.get("domicile_state"),
             "gate_paper": student.get("gate_paper")
         },
         "total_eligible": len(scored),
-        "safe": safe,
-        "target": target,
-        "ambitious": ambitious
+        "safe":           safe,
+        "target":         target,
+        "ambitious":      ambitious
     }

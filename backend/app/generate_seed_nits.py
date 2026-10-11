@@ -4,37 +4,42 @@ Builds the nits collection using actual institute codes,
 names, and programmes found in ccmt_cutoffs — guarantees
 consistency between the nits collection and ccmt_cutoffs
 collection (both derived from the same real scraped source).
+
+IMPORTANT: After running this script, you MUST re-run:
+  1. python app/nirf_scraper.py      (restores real NIRF ranks)
+  2. python app/seat_matrix_scraper.py (restores seat counts)
+  3. python app/update_fees_hostel.py  (restores fee data)
 """
 
 import asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
 
-MONGODB_URL = "mongodb://localhost:27017"
+MONGODB_URL   = "mongodb://localhost:27017"
 DATABASE_NAME = "ascent_db"
 
 NIT_METADATA = {
-    "NITT":   {"name": "NIT Trichy",            "location": "Tiruchirappalli, Tamil Nadu", "region": "South India", "nirf_rank": 9,  "nirf_rank_sort": 1},
-    "NITRK":  {"name": "NIT Rourkela",          "location": "Rourkela, Odisha",            "region": "East India",  "nirf_rank": 13, "nirf_rank_sort": 2},
-    "NITK":   {"name": "NIT Surathkal",         "location": "Surathkal, Karnataka",        "region": "South India", "nirf_rank": 17, "nirf_rank_sort": 3},
-    "NITC":   {"name": "NIT Calicut",           "location": "Calicut, Kerala",             "region": "South India", "nirf_rank": 21, "nirf_rank_sort": 4},
-    "NITW":   {"name": "NIT Warangal",          "location": "Warangal, Telangana",         "region": "South India", "nirf_rank": 28, "nirf_rank_sort": 5},
-    "MNIT":   {"name": "NIT Jaipur",            "location": "Jaipur, Rajasthan",           "region": "North India", "nirf_rank": 42, "nirf_rank_sort": 6},
-    "VNIT":   {"name": "NIT Nagpur",            "location": "Nagpur, Maharashtra",         "region": "West India",  "nirf_rank": 44, "nirf_rank_sort": 7},
-    "NITDGP": {"name": "NIT Durgapur",          "location": "Durgapur, West Bengal",       "region": "East India",  "nirf_rank": 49, "nirf_rank_sort": 8},
-    "NITSLR": {"name": "NIT Silchar",           "location": "Silchar, Assam",              "region": "East India",  "nirf_rank": 50, "nirf_rank_sort": 9},
-    "NITP":   {"name": "NIT Patna",             "location": "Patna, Bihar",                "region": "East India",  "nirf_rank": 53, "nirf_rank_sort": 10},
-    "NITJ":   {"name": "NIT Jalandhar",         "location": "Jalandhar, Punjab",           "region": "North India", "nirf_rank": 55, "nirf_rank_sort": 11},
-    "MNNIT":  {"name": "NIT Allahabad",         "location": "Prayagraj, Uttar Pradesh",    "region": "North India", "nirf_rank": 62, "nirf_rank_sort": 12},
-    "NITD":   {"name": "NIT Delhi",             "location": "Delhi",                       "region": "North India", "nirf_rank": 65, "nirf_rank_sort": 13},
-    "SVNIT":  {"name": "NIT Surat",             "location": "Surat, Gujarat",              "region": "West India",  "nirf_rank": 66, "nirf_rank_sort": 14},
-    "NITSR":  {"name": "NIT Srinagar",          "location": "Srinagar, J&K",               "region": "North India", "nirf_rank": 73, "nirf_rank_sort": 15},
-    "MANIT":  {"name": "NIT Bhopal",            "location": "Bhopal, Madhya Pradesh",      "region": "West India",  "nirf_rank": 81, "nirf_rank_sort": 16},
-    "NITJSR": {"name": "NIT Jamshedpur",        "location": "Jamshedpur, Jharkhand",       "region": "East India",  "nirf_rank": 82, "nirf_rank_sort": 17},
-    "NITM":   {"name": "NIT Meghalaya",         "location": "Shillong, Meghalaya",         "region": "East India",  "nirf_rank": 83, "nirf_rank_sort": 18},
-    "NITKKR": {"name": "NIT Kurukshetra",       "location": "Kurukshetra, Haryana",        "region": "North India", "nirf_rank": 85, "nirf_rank_sort": 19},
-    "NITRR":  {"name": "NIT Raipur",            "location": "Raipur, Chhattisgarh",        "region": "East India",  "nirf_rank": 86, "nirf_rank_sort": 20},
-    "NITH":   {"name": "NIT Hamirpur",          "location": "Hamirpur, Himachal Pradesh",  "region": "North India", "nirf_rank": 97, "nirf_rank_sort": 21},
-    "NITPY":  {"name": "NIT Puducherry",        "location": "Karaikal, Puducherry",        "region": "South India", "nirf_rank": 99, "nirf_rank_sort": 22},
+    "NITT":   {"name": "NIT Trichy",            "location": "Tiruchirappalli, Tamil Nadu", "region": "South India", "nirf_rank": 9,   "nirf_rank_sort": 1},
+    "NITRK":  {"name": "NIT Rourkela",          "location": "Rourkela, Odisha",            "region": "East India",  "nirf_rank": 13,  "nirf_rank_sort": 2},
+    "NITK":   {"name": "NIT Surathkal",         "location": "Surathkal, Karnataka",        "region": "South India", "nirf_rank": 17,  "nirf_rank_sort": 3},
+    "NITC":   {"name": "NIT Calicut",           "location": "Calicut, Kerala",             "region": "South India", "nirf_rank": 21,  "nirf_rank_sort": 4},
+    "NITW":   {"name": "NIT Warangal",          "location": "Warangal, Telangana",         "region": "South India", "nirf_rank": 28,  "nirf_rank_sort": 5},
+    "MNIT":   {"name": "NIT Jaipur",            "location": "Jaipur, Rajasthan",           "region": "North India", "nirf_rank": 42,  "nirf_rank_sort": 6},
+    "VNIT":   {"name": "NIT Nagpur",            "location": "Nagpur, Maharashtra",         "region": "West India",  "nirf_rank": 44,  "nirf_rank_sort": 7},
+    "NITDGP": {"name": "NIT Durgapur",          "location": "Durgapur, West Bengal",       "region": "East India",  "nirf_rank": 49,  "nirf_rank_sort": 8},
+    "NITSLR": {"name": "NIT Silchar",           "location": "Silchar, Assam",              "region": "East India",  "nirf_rank": 50,  "nirf_rank_sort": 9},
+    "NITP":   {"name": "NIT Patna",             "location": "Patna, Bihar",                "region": "East India",  "nirf_rank": 53,  "nirf_rank_sort": 10},
+    "NITJ":   {"name": "NIT Jalandhar",         "location": "Jalandhar, Punjab",           "region": "North India", "nirf_rank": 55,  "nirf_rank_sort": 11},
+    "MNNIT":  {"name": "NIT Allahabad",         "location": "Prayagraj, Uttar Pradesh",    "region": "North India", "nirf_rank": 62,  "nirf_rank_sort": 12},
+    "NITD":   {"name": "NIT Delhi",             "location": "Delhi",                       "region": "North India", "nirf_rank": 65,  "nirf_rank_sort": 13},
+    "SVNIT":  {"name": "NIT Surat",             "location": "Surat, Gujarat",              "region": "West India",  "nirf_rank": 66,  "nirf_rank_sort": 14},
+    "NITSR":  {"name": "NIT Srinagar",          "location": "Srinagar, J&K",               "region": "North India", "nirf_rank": 73,  "nirf_rank_sort": 15},
+    "MANIT":  {"name": "NIT Bhopal",            "location": "Bhopal, Madhya Pradesh",      "region": "West India",  "nirf_rank": 81,  "nirf_rank_sort": 16},
+    "NITJSR": {"name": "NIT Jamshedpur",        "location": "Jamshedpur, Jharkhand",       "region": "East India",  "nirf_rank": 82,  "nirf_rank_sort": 17},
+    "NITM":   {"name": "NIT Meghalaya",         "location": "Shillong, Meghalaya",         "region": "East India",  "nirf_rank": 83,  "nirf_rank_sort": 18},
+    "NITKKR": {"name": "NIT Kurukshetra",       "location": "Kurukshetra, Haryana",        "region": "North India", "nirf_rank": 85,  "nirf_rank_sort": 19},
+    "NITRR":  {"name": "NIT Raipur",            "location": "Raipur, Chhattisgarh",        "region": "East India",  "nirf_rank": 86,  "nirf_rank_sort": 20},
+    "NITH":   {"name": "NIT Hamirpur",          "location": "Hamirpur, Himachal Pradesh",  "region": "North India", "nirf_rank": 97,  "nirf_rank_sort": 21},
+    "NITPY":  {"name": "NIT Puducherry",        "location": "Karaikal, Puducherry",        "region": "South India", "nirf_rank": 99,  "nirf_rank_sort": 22},
     "NITA":   {"name": "NIT Agartala",          "location": "Agartala, Tripura",           "region": "East India",  "nirf_rank": None, "nirf_rank_sort": 23},
     "NITAR":  {"name": "NIT Arunachal Pradesh", "location": "Yupia, Arunachal Pradesh",    "region": "East India",  "nirf_rank": None, "nirf_rank_sort": 24},
     "NITGOA": {"name": "NIT Goa",               "location": "Farmagudi, Goa",              "region": "West India",  "nirf_rank": None, "nirf_rank_sort": 25},
@@ -46,7 +51,6 @@ NIT_METADATA = {
     "NITAP":  {"name": "NIT Andhra Pradesh",    "location": "Tadepalligudem, AP",          "region": "South India", "nirf_rank": None, "nirf_rank_sort": 31},
 }
 
-# Final 8 branch codes confirmed via audit_branch_coverage.py
 BRANCH_FULL_NAMES = {
     "CSE": "Computer Science & Engineering",
     "AI":  "Artificial Intelligence",
@@ -64,9 +68,9 @@ async def generate_nits():
     client = AsyncIOMotorClient(MONGODB_URL)
     db = client[DATABASE_NAME]
 
-    # Get all cutoff records that actually exist in our
-    # verified, filtered real data
-    cutoffs = await db["ccmt_cutoffs"].find({}, {"_id": 0}).to_list(length=10000)
+    cutoffs = await db["ccmt_cutoffs"].find(
+        {}, {"_id": 0}
+    ).to_list(length=10000)
 
     if not cutoffs:
         print("❌ ccmt_cutoffs collection is empty. "
@@ -75,12 +79,9 @@ async def generate_nits():
         return
 
     # Group programmes per institute per branch
-    # (keep one representative programme name + track how
-    # many years/rounds/categories we have data for, as a
-    # quick data-richness signal)
     institute_programmes = {}
     for c in cutoffs:
-        code = c["institute_code"]
+        code   = c["institute_code"]
         branch = c["branch_code"]
         prog_name = c["programme_name"]
 
@@ -94,9 +95,8 @@ async def generate_nits():
             }
         institute_programmes[code][branch]["record_count"] += 1
 
-    # Build the nits documents
     nits_data = []
-    skipped = []
+    skipped   = []
 
     for code, meta in NIT_METADATA.items():
         programmes_at_this_nit = institute_programmes.get(code, {})
@@ -106,8 +106,6 @@ async def generate_nits():
             continue
 
         mtech_programs = []
-        # Sort branches by record count (most data-rich first)
-        # so the primary/most common programme appears first
         sorted_branches = sorted(
             programmes_at_this_nit.items(),
             key=lambda x: x[1]["record_count"],
@@ -116,29 +114,36 @@ async def generate_nits():
 
         for branch_code, info in sorted_branches:
             mtech_programs.append({
-                "program_id": f"{code}_{branch_code}",
+                "program_id":    f"{code}_{branch_code}",
                 "official_name": info["name"],
-                "short_name": branch_code,
-                "short_name_full": BRANCH_FULL_NAMES.get(branch_code, branch_code),
-                "gate_papers": ["CS", "DA"],  # both accepted; refine later if needed
-                "has_hostel": True,
-                # Exact seat counts and fees need separate scraping
-                # from CCMT seat matrix — placeholder for now
-                "seats": {"UR": None, "OBC": None, "SC": None, "ST": None, "EWS": None},
-                "fee_annual": None,
+                "short_name":    branch_code,
+                "short_name_full": BRANCH_FULL_NAMES.get(
+                    branch_code, branch_code
+                ),
+                "gate_papers":   ["CS", "DA"],
+                "has_hostel":    True,
+                # Seats and fees are populated by separate
+                # scripts (seat_matrix_scraper.py and
+                # update_fees_hostel.py) — do NOT hardcode
+                # them here or they will be wiped on re-run
+                "seats": {
+                    "UR": None, "OBC": None, "SC": None,
+                    "ST": None, "EWS": None, "total": None
+                },
+                "fee_annual":    None,
                 "historical_record_count": info["record_count"],
             })
 
         nits_data.append({
-            "nit_code": code,
-            "name": meta["name"],
-            "location": meta["location"],
-            "state": meta["location"].split(",")[-1].strip(),
-            "region": meta["region"],
-            "nirf_rank": meta["nirf_rank"],
-            "nirf_rank_sort": meta["nirf_rank_sort"], 
+            "nit_code":       code,
+            "name":           meta["name"],
+            "location":       meta["location"],
+            "state":          meta["location"].split(",")[-1].strip(),
+            "region":         meta["region"],
+            "nirf_rank":      meta["nirf_rank"],
+            "nirf_rank_sort": meta["nirf_rank_sort"],
             "mtech_programs": mtech_programs,
-            "data_source": "CCMT OR-CR real scraped data (2021-2025)",
+            "data_source":    "CCMT OR-CR real scraped data (2021-2025)",
         })
 
     await db["nits"].delete_many({})
@@ -157,20 +162,25 @@ async def generate_nits():
 
     if skipped:
         print(f"\n⚠️ Skipped {len(skipped)} NITs with no CSE/DA "
-              f"programmes found in scraped data: {skipped}")
+              f"programmes in scraped data: {skipped}")
 
-    # Summary: branch coverage across all NITs
     print(f"\n{'='*60}")
     print("Branch coverage summary")
     print(f"{'='*60}")
     branch_nit_count = {}
     for n in nits_data:
         for p in n["mtech_programs"]:
-            branch_nit_count[p["short_name"]] = branch_nit_count.get(p["short_name"], 0) + 1
+            b = p["short_name"]
+            branch_nit_count[b] = branch_nit_count.get(b, 0) + 1
 
     for branch, count in sorted(branch_nit_count.items()):
         full_name = BRANCH_FULL_NAMES.get(branch, branch)
         print(f"  {branch} ({full_name}): offered at {count}/31 NITs")
+
+    print(f"\n⚠️  IMPORTANT: Now run these scripts in order:")
+    print(f"  1. python app/nirf_scraper.py")
+    print(f"  2. python app/seat_matrix_scraper.py")
+    print(f"  3. python app/update_fees_hostel.py")
 
     client.close()
 

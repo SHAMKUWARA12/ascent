@@ -4,90 +4,17 @@ from app.auth import decode_token
 
 router = APIRouter()
 
-# ─────────────────────────────────────────────────────────
-# OFFICIAL CCMT DEFINITIONS:
-#
-# LOCK: Accept current seat. Exit counselling. Final.
-#
-# FLOAT:  Be considered for ALL better-preferred choices
-#         across ANY institute in next round.
-#         SAFE — retain current if nothing better allotted.
-#
-# SLIDE:  Be considered for better-preferred choices ONLY
-#         within the SAME institute.
-#         SAFE — retain current if nothing better at same NIT.
-# ─────────────────────────────────────────────────────────
-
-
-# ── Generate preference list ──────────────────────────────
-
-def generate_preference_list(safe, target, ambitious, student):
-    preferences = []
-    counter = 1
-    branch_priorities = student.get("branch_priorities", [])
-
-    def sort_by_branch(items):
-        return sorted(
-            items,
-            key=lambda x: x.get("total_score", 0),
-            reverse=True
-        )
-
-    for nit in sort_by_branch(ambitious):
-        preferences.append({
-            "preference_no": counter,
-            "nit_code": nit.get("nit_code"),
-            "nit_name": nit.get("nit_name"),
-            "branch": nit.get("branch"),
-            "branch_full": nit.get("branch_full"),
-            "category": student.get("category", "UR"),
-            "bucket": "Ambitious",
-            "probability": nit.get("admission_probability"),
-            "note": "Dream choice — worth including"
-        })
-        counter += 1
-
-    for nit in sort_by_branch(target):
-        preferences.append({
-            "preference_no": counter,
-            "nit_code": nit.get("nit_code"),
-            "nit_name": nit.get("nit_name"),
-            "branch": nit.get("branch"),
-            "branch_full": nit.get("branch_full"),
-            "category": student.get("category", "UR"),
-            "bucket": "Target",
-            "probability": nit.get("admission_probability"),
-            "note": "Realistic target — good chances"
-        })
-        counter += 1
-
-    for nit in sort_by_branch(safe):
-        note = "Safety net — very likely"
-        if nit.get("home_state"):
-            note = "Home state safety net — almost certain"
-        preferences.append({
-            "preference_no": counter,
-            "nit_code": nit.get("nit_code"),
-            "nit_name": nit.get("nit_name"),
-            "branch": nit.get("branch"),
-            "branch_full": nit.get("branch_full"),
-            "category": student.get("category", "UR"),
-            "bucket": "Safe",
-            "probability": nit.get("admission_probability"),
-            "note": note
-        })
-        counter += 1
-
-    return preferences
-
-
-# ── Get all scored NITs ───────────────────────────────────
 
 async def get_scored_nits(student, db):
     from app.routes.recommend import score_nit_programme
-    nits = await db["nits"].find({}, {"_id": 0}).to_list(length=100)
 
-    sentiment_docs = await db["nit_sentiment"].find({}, {"_id": 0}).to_list(length=100)
+    nits = await db["nits"].find(
+        {}, {"_id": 0}
+    ).to_list(length=100)
+
+    sentiment_docs   = await db["nit_sentiment"].find(
+        {}, {"_id": 0}
+    ).to_list(length=100)
     sentiment_lookup = {
         doc["nit_code"]: doc["overall_score"]
         for doc in sentiment_docs
@@ -106,239 +33,181 @@ async def get_scored_nits(student, db):
     return scored
 
 
-# ── Find preference number for a given NIT + branch ───────
+def generate_preference_list(scored: list) -> list:
+    ambitious = [n for n in scored if n["bucket"] == "Ambitious"]
+    target    = [n for n in scored if n["bucket"] == "Target"]
+    safe      = [n for n in scored if n["bucket"] == "Safe"]
 
-def find_preference_no(preferences, nit_name, branch):
-    for p in preferences:
-        if (p["nit_name"].lower() == nit_name.lower() and
-                p["branch"].upper() == branch.upper()):
-            return p["preference_no"]
-    return None
+    ordered = ambitious + target + safe
 
+    preferences = []
+    for i, nit in enumerate(ordered, 1):
+        nirf_display = nit.get("nirf_rank_display") or (
+            f"#{nit['nirf_rank']}" if nit.get("nirf_rank")
+            else "Band 101+"
+        )
+        preferences.append({
+            "preference_no":  i,
+            "nit_code":       nit["nit_code"],
+            "nit_name":       nit["nit_name"],
+            "branch":         nit["branch"],
+            "branch_full":    nit.get("branch_full", ""),
+            "category":       nit["category"],
+            "probability":    nit["admission_probability"],
+            "bucket":         nit["bucket"],
+            "total_score":    nit["total_score"],
+            "nirf_rank":      nit.get("nirf_rank"),
+            "nirf_display":   nirf_display,
+            "predicted_closing": nit.get("predicted_closing_score"),
+        })
 
-# ── Standard options explanation (always shown) ───────────
+    return preferences
 
-def build_options(current_nit, current_branch, target_nit, target_branch):
-    current = f"{current_nit} — {current_branch}"
-    target  = f"{target_nit} — {target_branch}"
-    return {
-        "LOCK": {
-            "what_it_means": (
-                "You are satisfied with your current seat. "
-                "You will NOT be considered for any better choices "
-                "in subsequent rounds. Your current allotment is confirmed."
-            ),
-            "pro": (
-                f"Your seat at {current} is 100% confirmed. "
-                "No uncertainty whatsoever."
-            ),
-            "con": (
-                "You permanently exit counselling. "
-                "Cannot participate in future rounds or upgrades."
-            )
-        },
-        "FLOAT": {
-            "what_it_means": (
-                "You are considered for ALL better-preferred choices "
-                "across ALL institutes in the next round. "
-                "If a better choice is allotted, your current allotment "
-                "is forfeited. If nothing better is allotted, "
-                "you retain your current allotment. SAFE option."
-            ),
-            "pro": (
-                f"Safe — you retain {current} if nothing better opens up. "
-                "Considers your entire preference list above current seat."
-            ),
-            "con": (
-                f"If a better choice IS allotted, "
-                f"{current} is automatically forfeited. "
-                "Only float if you are willing to accept the upgrade."
-            )
-        },
-        "SLIDE": {
-            "what_it_means": (
-                f"You are considered for better-preferred choices "
-                f"ONLY within {current_nit}. "
-                "If nothing better within that institute is allotted, "
-                "you retain your current allotment. SAFE option."
-            ),
-            "pro": (
-                f"Safe — you retain {current} if no better branch "
-                f"opens at {current_nit}. "
-                f"Useful when you want to upgrade branch within same NIT."
-            ),
-            "con": (
-                f"Limited to {current_nit} only. "
-                "You miss chances at better branches in other institutes."
-            )
-        }
-    }
-
-
-# ── Part 1 Choice Filing ──────────────────────────────────
 
 @router.get("/choice-filing/part1")
-async def get_part1_list(token: str):
+async def get_choice_filing_part1(token: str):
     db = get_db()
+
     payload = decode_token(token)
-    email = payload.get("sub")
+    email   = payload.get("sub")
 
     student = await db["students"].find_one(
         {"email": email}, {"_id": 0, "password": 0}
     )
     if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
+        raise HTTPException(
+            status_code=404, detail="Student not found"
+        )
     if not student.get("profile_complete"):
         raise HTTPException(
             status_code=400,
             detail="Please complete your profile first"
         )
 
-    scored = await get_scored_nits(student, db)
-    safe      = [n for n in scored if n["bucket"] == "Safe"]
-    target    = [n for n in scored if n["bucket"] == "Target"]
-    ambitious = [n for n in scored if n["bucket"] == "Ambitious"]
-    preferences = generate_preference_list(safe, target, ambitious, student)
+    scored      = await get_scored_nits(student, db)
+    preferences = generate_preference_list(scored)
 
     return {
-        "part": "Part 1 — Regular Rounds (R1, R2, R3)",
-        "instruction": (
-            "Submit this list ONCE before Round 1 starts. "
-            "The same list is used for all 3 regular rounds."
+        "part":        "Part 1 — Regular Rounds (R1, R2, R3)",
+        "description": (
+            "Submit this list on the CCMT portal before "
+            "Round 1 opens. The same list is valid for all "
+            "three regular rounds. Ambitious choices are "
+            "listed first — CCMT allots your highest eligible "
+            "preference automatically."
         ),
-        "student": {
-            "name": student.get("full_name"),
-            "gate_score": student.get("gate_score"),
-            "category": student.get("category")
-        },
-        "total_preferences": len(preferences),
-        "preferences": preferences,
-        "why_this_order": (
-            "Ambitious choices are placed first because CCMT gives "
-            "your highest eligible preference automatically. "
-            "Safe choices at the bottom ensure you never go empty handed."
-        ),
-        "important_note": (
-            f"Your home state NIT "
-            f"({student.get('home_state_nit', 'N/A')}) "
-            f"is your safety net. Always keep it in your list."
-        )
+        "total":       len(preferences),
+        "preferences": preferences
     }
 
 
-# ── Part 2 Choice Filing ──────────────────────────────────
-
 @router.post("/choice-filing/part2")
-async def get_part2_list(token: str, current_allocation: str):
+async def get_choice_filing_part2(
+    token: str,
+    current_allocation: str = "No seat"
+):
     db = get_db()
+
     payload = decode_token(token)
-    email = payload.get("sub")
+    email   = payload.get("sub")
 
     student = await db["students"].find_one(
         {"email": email}, {"_id": 0, "password": 0}
     )
     if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
+        raise HTTPException(
+            status_code=404, detail="Student not found"
+        )
 
+    got_seat = (
+        current_allocation.strip().lower() not in
+        ["no seat", "no", "none", ""]
+    )
+
+    if not got_seat:
+        scored      = await get_scored_nits(student, db)
+        preferences = generate_preference_list(scored)
+        return {
+            "part":              "Part 2 — Special Rounds (SR1, SR2)",
+            "current_allocation": None,
+            "got_seat":          False,
+            "description":       (
+                "You did not receive a seat in regular rounds. "
+                "Submit this fresh list for Special Rounds."
+            ),
+            "total":             len(preferences),
+            "preferences":       preferences
+        }
+
+    # Student has a seat — generate upgrade-focused list
     scored = await get_scored_nits(student, db)
-    safe      = [n for n in scored if n["bucket"] == "Safe"]
-    target    = [n for n in scored if n["bucket"] == "Target"]
-    ambitious = [n for n in scored if n["bucket"] == "Ambitious"]
-    preferences = generate_preference_list(safe, target, ambitious, student)
+
+    # Filter to only options better than current allocation
+    upgrade_options = [
+        n for n in scored
+        if n["nit_name"] not in current_allocation
+        or n["branch"] not in current_allocation
+    ]
+
+    preferences = generate_preference_list(upgrade_options)
 
     return {
-        "part": "Part 2 — Special Rounds (SR1, SR2)",
-        "instruction": (
-            "Submit this NEW list before Special Round 1. "
-            "This is different from your Part 1 list."
-        ),
+        "part":               "Part 2 — Special Rounds (SR1, SR2)",
         "current_allocation": current_allocation,
-        "student": {
-            "name": student.get("full_name"),
-            "gate_score": student.get("gate_score"),
-            "category": student.get("category")
-        },
-        "total_preferences": len(preferences),
-        "preferences": preferences,
-        "important_note": (
-            f"You currently have {current_allocation}. "
-            "This list helps you upgrade during Special Rounds."
-        )
+        "got_seat":           True,
+        "description":        (
+            "You have a current seat. This list focuses on "
+            "upgrade options. Your current seat is safe — "
+            "FLOAT and SLIDE are risk-free choices."
+        ),
+        "total":              len(preferences),
+        "preferences":        preferences
     }
 
-
-# ── Advisor ───────────────────────────────────────────────
 
 @router.post("/advisor")
 async def advisor(
     token: str,
-    current_nit: str,
-    current_branch: str,
-    target_nit: str,
-    target_branch: str
+    current_nit: str    = "",
+    current_branch: str = "",
+    target_nit: str     = "",
+    target_branch: str  = "Any"
 ):
     db = get_db()
+
     payload = decode_token(token)
-    email = payload.get("sub")
+    email   = payload.get("sub")
 
     student = await db["students"].find_one(
         {"email": email}, {"_id": 0, "password": 0}
     )
     if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
+        raise HTTPException(
+            status_code=404, detail="Student not found"
+        )
 
-    options = build_options(
-        current_nit, current_branch,
-        target_nit, target_branch
-    )
+    if not current_nit or not current_branch or not target_nit:
+        raise HTTPException(
+            status_code=400,
+            detail="Please provide current NIT, branch, and target NIT"
+        )
 
-    # ── Validate: same seat ───────────────────────────────
-    if (current_nit.strip().lower() == target_nit.strip().lower() and
-            current_branch.strip().upper() == target_branch.strip().upper()):
-        return {
-            "recommendation": "LOCK",
-            "risk_level": "NONE",
-            "reason": (
-                f"Your current seat ({current_nit} — {current_branch}) "
-                f"and target are identical. "
-                f"If you are satisfied with this seat, choose LOCK "
-                f"to confirm it and exit counselling."
-            ),
-            "current_nit": current_nit,
-            "current_branch": current_branch,
-            "target_nit": target_nit,
-            "target_branch": target_branch,
-            "target_probability": 100,
-            "same_nit": True,
-            "preference_context": None,
-            "options": options
-        }
+    nits = await db["nits"].find(
+        {}, {"_id": 0}
+    ).to_list(length=100)
 
-    # ── Get ASCENT preference list ────────────────────────
-    scored = await get_scored_nits(student, db)
-    safe      = [n for n in scored if n["bucket"] == "Safe"]
-    target_b  = [n for n in scored if n["bucket"] == "Target"]
-    ambitious = [n for n in scored if n["bucket"] == "Ambitious"]
-    preferences = generate_preference_list(
-        safe, target_b, ambitious, student
-    )
+    # Fetch sentiment lookup for scoring
+    sentiment_docs   = await db["nit_sentiment"].find(
+        {}, {"_id": 0}
+    ).to_list(length=100)
+    sentiment_lookup = {
+        doc["nit_code"]: doc["overall_score"]
+        for doc in sentiment_docs
+    }
 
-    current_pref_no = find_preference_no(
-        preferences, current_nit, current_branch
-    )
-    target_pref_no = find_preference_no(
-        preferences, target_nit, target_branch
-    )
-
-    # ── Get target probability ────────────────────────────
-    from app.routes.recommend import score_nit_programme
-    nits = await db["nits"].find({}, {"_id": 0}).to_list(length=100)
-
-    probability  = 0
-    current_nirf_sort = 31
-    target_nirf_sort  = 31
-    current_nirf      = None
-    target_nirf       = None
+    # Find current and target NIT data
+    current_nit_doc = None
+    target_nit_doc  = None
 
     for nit in nits:
         name_lower = nit.get("name", "").lower()
@@ -346,215 +215,239 @@ async def advisor(
 
         if (name_lower == current_nit.strip().lower() or
                 code_lower == current_nit.strip().lower()):
-            current_nirf      = nit.get("nirf_rank")
-            current_nirf_sort = nit.get("nirf_rank_sort") or 31
+            current_nit_doc = nit
 
         if (name_lower == target_nit.strip().lower() or
                 code_lower == target_nit.strip().lower()):
-            target_nirf      = nit.get("nirf_rank")
-            target_nirf_sort = nit.get("nirf_rank_sort") or 31
-            for prog in nit.get("mtech_programs", []):
-                if target_branch:
-                    if (prog.get("short_name", "").upper()
-                            != target_branch.strip().upper()):
-                        continue
-                sentiment_docs = await db["nit_sentiment"].find({}, {"_id": 0}).to_list(length=100)
-                sentiment_lookup = {
-                    doc["nit_code"]: doc["overall_score"]
-                    for doc in sentiment_docs
-                }
-                result = await score_nit_programme(db, nit, prog, student, sentiment_lookup)
-                if result:
-                    p = result.get("admission_probability", 0)
-                    if p > probability:
-                        probability = p
+            target_nit_doc = nit
 
-    same_nit = (
-        current_nit.strip().lower() == target_nit.strip().lower()
+    if not current_nit_doc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Current NIT '{current_nit}' not found"
+        )
+    if not target_nit_doc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Target NIT '{target_nit}' not found"
+        )
+
+    # Get sort ranks — always integers (1-31)
+    current_nirf_sort = current_nit_doc.get("nirf_rank_sort") or 31
+    target_nirf_sort  = target_nit_doc.get("nirf_rank_sort")  or 31
+
+    # Get display ranks — may be None for band NITs
+    current_nirf = current_nit_doc.get("nirf_rank")
+    target_nirf  = target_nit_doc.get("nirf_rank")
+
+    # Build display strings
+    current_nirf_display = (
+        f"#{current_nirf}" if current_nirf else
+        current_nit_doc.get("nirf_rank_display", "Band 101+")
+    )
+    target_nirf_display = (
+        f"#{target_nirf}" if target_nirf else
+        target_nit_doc.get("nirf_rank_display", "Band 101+")
     )
 
-    # ── Check preference list context ─────────────────────
-    preference_context = None
-    if current_pref_no and target_pref_no:
-        if target_pref_no < current_pref_no:
-            preference_context = (
-                f"Target (Pref #{target_pref_no}) is ranked HIGHER "
-                f"than current (Pref #{current_pref_no}) in your "
-                f"ASCENT preference list. "
-                f"This is a valid upgrade direction."
-            )
-        else:
-            preference_context = (
-                f"Warning: Target (Pref #{target_pref_no}) is ranked "
-                f"LOWER than current (Pref #{current_pref_no}) in your "
-                f"ASCENT preference list. "
-                f"CCMT will never allot something ranked lower than "
-                f"your current seat. Consider LOCK instead."
-            )
+    # Get student branch preferences
+    branch_priorities = student.get("branch_priorities", [])
 
-    # ══════════════════════════════════════════════════════
-    # SAME NIT → Recommend SLIDE or LOCK
-    #
-    # SLIDE: considered for better preferences at SAME NIT.
-    # Safe — retain current if nothing better at same NIT.
-    #
-    # When to recommend SLIDE:
-    # Target is a better preferred branch at same NIT
-    # (target preference no < current preference no)
-    #
-    # When to recommend LOCK:
-    # Target branch is lower/equal priority → no benefit
-    # ══════════════════════════════════════════════════════
-    if same_nit:
+    def pref_index(branch):
+        """Lower index = higher priority. 999 if not in list."""
+        try:
+            return branch_priorities.index(branch.upper())
+        except ValueError:
+            return 999
 
-        branch_priorities = student.get("branch_priorities", [])
+    current_pref_idx = pref_index(current_branch)
+    target_pref_idx  = (
+        pref_index(target_branch)
+        if target_branch and target_branch.lower() != "any"
+        else 999
+    )
 
-        def branch_idx(b):
-            try:
-                return branch_priorities.index(b.upper())
-            except ValueError:
-                return 999
+    # Same seat check
+    same_nit    = (current_nit.strip().lower() ==
+                   target_nit.strip().lower())
+    same_branch = (current_branch.strip().upper() ==
+                   target_branch.strip().upper())
 
-        current_idx = branch_idx(current_branch)
-        target_idx  = branch_idx(target_branch)
-
-        # Target branch is lower or equal priority
-        if target_idx >= current_idx:
-            recommendation = "LOCK"
-            risk = "NONE"
-            reason = (
-                f"Your current branch ({current_branch}) is already "
-                f"at a higher or equal priority compared to your "
-                f"target ({target_branch}) at {current_nit}. "
-                f"Sliding to a lower priority branch makes no sense. "
-                f"LOCK your current seat — you already have the better option."
-            )
-        else:
-            # Target branch is higher priority → SLIDE is appropriate
-            # SLIDE is safe — you retain current if nothing better at same NIT
-            recommendation = "SLIDE"
-            risk = "LOW"
-            if probability >= 60:
-                reason = (
-                    f"Good chance ({probability}%) of upgrading from "
-                    f"{current_branch} to {target_branch} at {current_nit}. "
-                    f"SLIDE is safe — if {target_branch} is not allotted "
-                    f"you automatically retain {current_branch} at "
-                    f"{current_nit}. You cannot lose your current seat."
-                )
-            elif probability >= 30:
-                reason = (
-                    f"Moderate chance ({probability}%) of getting "
-                    f"{target_branch} at {current_nit}. "
-                    f"SLIDE is still safe — you retain {current_branch} "
-                    f"at {current_nit} if nothing better opens up. "
-                    f"Worth trying as cutoffs may drop in later rounds."
-                )
-            else:
-                reason = (
-                    f"Low chance ({probability}%) this round but "
-                    f"SLIDE is always safe — you retain {current_branch} "
-                    f"at {current_nit} if {target_branch} cutoff does "
-                    f"not come down. Keep sliding and wait for later rounds."
-                )
-
+    if same_nit and same_branch:
         return {
-            "recommendation": recommendation,
-            "risk_level": risk,
-            "reason": reason,
-            "current_nit": current_nit,
-            "current_branch": current_branch,
-            "target_nit": target_nit,
-            "target_branch": target_branch,
-            "target_probability": probability,
-            "same_nit": True,
-            "current_nirf": current_nirf,
-            "target_nirf": target_nirf,
-            "current_preference_no": current_pref_no,
-            "target_preference_no": target_pref_no,
-            "preference_context": preference_context,
-            "options": options
+            "recommendation": "FREEZE",
+            "risk_level":     "NONE",
+            "reason": (
+                f"You selected the same seat you currently have "
+                f"({current_nit} — {current_branch}). "
+                f"FREEZE to confirm this seat permanently."
+            ),
+            "current_nirf_display": current_nirf_display,
+            "target_nirf_display":  target_nirf_display,
+            "probability":          100,
+            "all_options":          _all_options_explanation()
         }
 
-    # ══════════════════════════════════════════════════════
-    # DIFFERENT NIT → Recommend FLOAT or LOCK
-    #
-    # FLOAT: considered for ALL better-preferred choices
-    # across ANY institute. Safe — retain current if nothing
-    # better is allotted anywhere.
-    #
-    # When to recommend FLOAT:
-    # Target is a better NIT or better branch at different NIT
-    # (target preference no < current preference no)
-    #
-    # When to recommend LOCK:
-    # Target is worse NIT with worse/equal branch
-    # → Current seat is already better
-    # ══════════════════════════════════════════════════════
+    # Compute probability of getting target
+    from app.routes.recommend import (
+        get_predicted_closing_score,
+        probability_from_zscore
+    )
 
-    # Target is worse NIT AND branch not significantly better
-    if (target_nirf_sort > current_nirf_sort and
-            target_pref_no and current_pref_no and
-            target_pref_no > current_pref_no):
-        recommendation = "LOCK"
-        risk = "NONE"
-        current_nirf_display = f"#{current_nirf}" if current_nirf else "Band 101-150"
-        target_nirf_display  = f"#{target_nirf}"  if target_nirf  else "Band 101-150"
-        reason = (
-            f"Your current seat ({current_nit} — {current_branch}, "
-            f"NIRF {current_nirf_display}) is better than your target "
-            f"({target_nit} — {target_branch}, NIRF {target_nirf_display}). "
-            f"Your target is also ranked lower (Pref #{target_pref_no}) "
-            f"than your current seat (Pref #{current_pref_no}) in your "
-            f"preference list. CCMT will never allot something ranked "
-            f"lower than your current seat. LOCK your current seat."
-        )
+    cat_map  = {
+        "UR": "UR", "GENERAL": "UR",
+        "OBC": "OBC", "OBC-NCL": "OBC",
+        "SC": "SC", "ST": "ST", "EWS": "EWS"
+    }
+    cat_key  = cat_map.get(student.get("category", "UR").upper(), "UR")
+    gate_score = student.get("gate_score", 0)
+
+    target_branch_for_calc = (
+        target_branch
+        if target_branch and target_branch.lower() != "any"
+        else current_branch
+    )
+
+    target_nit_code = target_nit_doc.get("nit_code", "")
+
+    predicted, std_dev, years = await get_predicted_closing_score(
+        db, target_nit_code, target_branch_for_calc, cat_key
+    )
+
+    if predicted is None:
+        probability = 50  # fallback if no data
     else:
-        # Target is better → FLOAT is safe and recommended
-        # FLOAT is safe — retain current if nothing better anywhere
-        recommendation = "FLOAT"
-        risk = "LOW"
-        target_nirf_display = f"#{target_nirf}" if target_nirf else "Band 101-150"
-        if probability >= 60:
+        probability = probability_from_zscore(
+            gate_score, predicted, std_dev
+        )
+
+    # ── Decision Logic ──────────────────────────────────────
+    #
+    # Uses nirf_rank_sort for comparison (always 1-31,
+    # lower = better rank).
+    # target_nirf_sort < current_nirf_sort means target is
+    # a BETTER ranked NIT.
+    #
+    # SLIDE: same NIT, better branch
+    # FLOAT: different NIT that is better ranked or higher
+    #        priority branch
+    # FREEZE: target is worse than current
+
+    if same_nit:
+        # Same NIT — only SLIDE makes sense
+        if target_pref_idx < current_pref_idx:
+            recommendation = "SLIDE"
+            risk_level     = "NONE"
             reason = (
-                f"Good chance ({probability}%) of getting "
-                f"{target_nit} — {target_branch} (NIRF {target_nirf_display}). "
-                f"FLOAT is safe — if allotted, your {current_nit} "
-                f"{current_branch} seat is forfeited and you get the "
-                f"better option. If nothing better opens up you retain "
-                f"{current_nit} — {current_branch}."
-            )
-        elif probability >= 30:
-            reason = (
-                f"Moderate chance ({probability}%) of getting "
-                f"{target_nit} — {target_branch}. "
-                f"FLOAT is safe — you retain {current_nit} "
-                f"{current_branch} if nothing better is allotted. "
-                f"Cutoffs typically drop in later rounds — keep floating."
+                f"You want a better branch at the same NIT "
+                f"({current_nit}). SLIDE is completely safe — "
+                f"if {target_branch} is not available you keep "
+                f"{current_branch} automatically. "
+                f"Probability of getting {target_branch}: {probability}%."
             )
         else:
+            recommendation = "FREEZE"
+            risk_level     = "NONE"
             reason = (
-                f"Low chance ({probability}%) this round but "
-                f"FLOAT is always safe for a better NIT. "
-                f"You retain {current_nit} — {current_branch} if "
-                f"{target_nit} {target_branch} cutoff does not come "
-                f"down. Keep floating — no risk to your current seat."
+                f"Your current branch ({current_branch}) is already "
+                f"equal or higher priority than {target_branch} at "
+                f"{current_nit}. FREEZE to confirm your current seat."
+            )
+    else:
+        # Different NIT
+        # target_nirf_sort < current_nirf_sort = target is BETTER
+        target_is_better_nit = (
+            target_nirf_sort < current_nirf_sort
+        )
+        target_is_better_branch = (
+            target_pref_idx < current_pref_idx
+            if target_pref_idx != 999 and current_pref_idx != 999
+            else False
+        )
+
+        if target_is_better_nit or target_is_better_branch:
+            recommendation = "FLOAT"
+            risk_level     = "NONE"
+            reason = (
+                f"Your target ({target_nit} — {target_branch}, "
+                f"NIRF {target_nirf_display}) is better than your "
+                f"current seat ({current_nit} — {current_branch}, "
+                f"NIRF {current_nirf_display}). "
+                f"FLOAT is completely safe — if you don't get "
+                f"{target_nit} you automatically keep "
+                f"{current_nit} — {current_branch}. "
+                f"Probability of getting target: {probability}%."
+            )
+        else:
+            recommendation = "FREEZE"
+            risk_level     = "NONE"
+            reason = (
+                f"Your current seat ({current_nit} — {current_branch}, "
+                f"NIRF {current_nirf_display}) is already better than "
+                f"or equal to your target ({target_nit} — {target_branch}, "
+                f"NIRF {target_nirf_display}). "
+                f"FREEZE to confirm your current seat permanently."
             )
 
     return {
-        "recommendation": recommendation,
-        "risk_level": risk,
-        "reason": reason,
-        "current_nit": current_nit,
-        "current_branch": current_branch,
-        "target_nit": target_nit,
-        "target_branch": target_branch,
-        "target_probability": probability,
-        "same_nit": False,
-        "current_nirf": current_nirf,
-        "target_nirf": target_nirf,
-        "current_preference_no": current_pref_no,
-        "target_preference_no": target_pref_no,
-        "preference_context": preference_context,
-        "options": options
+        "recommendation":        recommendation,
+        "risk_level":            risk_level,
+        "reason":                reason,
+        "probability":           probability,
+        "current_nit":           current_nit,
+        "current_branch":        current_branch,
+        "current_nirf_display":  current_nirf_display,
+        "current_nirf_sort":     current_nirf_sort,
+        "target_nit":            target_nit,
+        "target_branch":         target_branch,
+        "target_nirf_display":   target_nirf_display,
+        "target_nirf_sort":      target_nirf_sort,
+        "predicted_closing":     predicted,
+        "years_of_data":         years,
+        "all_options":           _all_options_explanation()
+    }
+
+
+def _all_options_explanation():
+    return {
+        "FREEZE": {
+            "title":       "FREEZE — Confirm Current Seat",
+            "definition":  (
+                "You are satisfied with your current allotment. "
+                "Not considered for better choices in subsequent "
+                "rounds. Current allotment permanently confirmed."
+            ),
+            "use_when":    "You are fully happy with your current seat.",
+            "risk":        "NONE — your seat is confirmed.",
+            "safe":        True
+        },
+        "FLOAT": {
+            "title":       "FLOAT — Try for Better NIT or Branch",
+            "definition":  (
+                "Considered for ALL better-preferred choices across "
+                "ANY institute in the next round. If better allotted "
+                "your current seat is forfeited. If nothing better "
+                "is allotted you RETAIN your current seat."
+            ),
+            "use_when":    (
+                "You want to try for a better NIT or any better "
+                "combination. Completely safe — cannot get worse."
+            ),
+            "risk":        "NONE — you keep current seat if nothing better.",
+            "safe":        True
+        },
+        "SLIDE": {
+            "title":       "SLIDE — Try for Better Branch at Same NIT",
+            "definition":  (
+                "Considered for better-preferred choices ONLY within "
+                "the SAME institute. If nothing better within same NIT "
+                "you RETAIN your current seat."
+            ),
+            "use_when":    (
+                "You want a better branch at the same NIT. "
+                "Completely safe — cannot get worse."
+            ),
+            "risk":        "NONE — you keep current branch if nothing better.",
+            "safe":        True
+        }
     }
