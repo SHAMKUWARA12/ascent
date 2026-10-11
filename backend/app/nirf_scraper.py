@@ -95,6 +95,7 @@ NIT_NAME_MAP = {
     "National Institute of Technology Sikkim":             "NITSKM",
     "National Institute of Technology Uttarakhand":        "NITUK",
     "National Institute of Technology Andhra Pradesh":     "NITAP",
+    "National Institute Of Technology, Andhra Pradesh":    "NITAP",
 }
 
 

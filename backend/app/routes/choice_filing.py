@@ -335,8 +335,10 @@ async def advisor(
     nits = await db["nits"].find({}, {"_id": 0}).to_list(length=100)
 
     probability  = 0
-    current_nirf = 999
-    target_nirf  = 999
+    current_nirf_sort = 31
+    target_nirf_sort  = 31
+    current_nirf      = None
+    target_nirf       = None
 
     for nit in nits:
         name_lower = nit.get("name", "").lower()
@@ -344,11 +346,13 @@ async def advisor(
 
         if (name_lower == current_nit.strip().lower() or
                 code_lower == current_nit.strip().lower()):
-            current_nirf = nit.get("nirf_rank", 999)
+            current_nirf      = nit.get("nirf_rank")
+            current_nirf_sort = nit.get("nirf_rank_sort") or 31
 
         if (name_lower == target_nit.strip().lower() or
                 code_lower == target_nit.strip().lower()):
-            target_nirf = nit.get("nirf_rank", 999)
+            target_nirf      = nit.get("nirf_rank")
+            target_nirf_sort = nit.get("nirf_rank_sort") or 31
             for prog in nit.get("mtech_programs", []):
                 if target_branch:
                     if (prog.get("short_name", "").upper()
@@ -489,15 +493,17 @@ async def advisor(
     # ══════════════════════════════════════════════════════
 
     # Target is worse NIT AND branch not significantly better
-    if (target_nirf > current_nirf and
+    if (target_nirf_sort > current_nirf_sort and
             target_pref_no and current_pref_no and
             target_pref_no > current_pref_no):
         recommendation = "LOCK"
         risk = "NONE"
+        current_nirf_display = f"#{current_nirf}" if current_nirf else "Band 101-150"
+        target_nirf_display  = f"#{target_nirf}"  if target_nirf  else "Band 101-150"
         reason = (
             f"Your current seat ({current_nit} — {current_branch}, "
-            f"NIRF #{current_nirf}) is better than your target "
-            f"({target_nit} — {target_branch}, NIRF #{target_nirf}). "
+            f"NIRF {current_nirf_display}) is better than your target "
+            f"({target_nit} — {target_branch}, NIRF {target_nirf_display}). "
             f"Your target is also ranked lower (Pref #{target_pref_no}) "
             f"than your current seat (Pref #{current_pref_no}) in your "
             f"preference list. CCMT will never allot something ranked "
@@ -508,10 +514,11 @@ async def advisor(
         # FLOAT is safe — retain current if nothing better anywhere
         recommendation = "FLOAT"
         risk = "LOW"
+        target_nirf_display = f"#{target_nirf}" if target_nirf else "Band 101-150"
         if probability >= 60:
             reason = (
                 f"Good chance ({probability}%) of getting "
-                f"{target_nit} — {target_branch} (NIRF #{target_nirf}). "
+                f"{target_nit} — {target_branch} (NIRF {target_nirf_display}). "
                 f"FLOAT is safe — if allotted, your {current_nit} "
                 f"{current_branch} seat is forfeited and you get the "
                 f"better option. If nothing better opens up you retain "
