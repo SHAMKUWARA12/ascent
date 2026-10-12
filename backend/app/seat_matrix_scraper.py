@@ -65,6 +65,9 @@ CSE_DA_DEPT_CODES = [
     "CX",   # Computer Engineering
     "C2",   # Centre for Artificial Intelligence
     "DP",   # Mathematics and Computing
+    "MD",   # Mathematics, CS & Engineering (covers some DA)
+    "A2",   # Mathematics, Bioinformatics & CS
+    "CA",   # Computer Applications
 ]
 
 
