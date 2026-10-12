@@ -1,15 +1,22 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getAdvisor, getAllNits} from '../services/api'
-
+import { getAdvisor, getAllNits } from '../services/api'
 
 export default function Advisor() {
   const { token } = useAuth()
-  const navigate = useNavigate()
+  const navigate  = useNavigate()
 
-  const [nitList, setNitList] = useState([])
+  const [nitList,       setNitList]       = useState([])
   const [branchOptions, setBranchOptions] = useState([])
+  const [currentNIT,    setCurrentNIT]    = useState('')
+  const [currentBranch, setCurrentBranch] = useState('')
+  const [targetNIT,     setTargetNIT]     = useState('')
+  const [targetBranch,  setTargetBranch]  = useState('Any branch')
+  const [result,        setResult]        = useState(null)
+  const [loading,       setLoading]       = useState(false)
+  const [error,         setError]         = useState('')
+  const [showList,      setShowList]      = useState(false)
 
   useEffect(() => {
     fetchNitOptions()
@@ -17,14 +24,14 @@ export default function Advisor() {
 
   const fetchNitOptions = async () => {
     try {
-      const res = await getAllNits()
+      const res  = await getAllNits()
       const nits = res.data.nits
 
       setNitList(nits.map(n => n.name).sort())
 
       const branchSet = new Map()
       nits.forEach(n => {
-        (n.mtech_programs || []).forEach(p => {
+        ;(n.mtech_programs || []).forEach(p => {
           branchSet.set(p.short_name, p.short_name_full || p.short_name)
         })
       })
@@ -37,333 +44,351 @@ export default function Advisor() {
     }
   }
 
-  const [form, setForm] = useState({
-    current_nit: '',
-    current_branch: '',
-    target_nit: '',
-    target_branch: ''
-  })
-
-  useEffect(() => {
-    if (
-      form.current_nit === form.target_nit &&
-      form.current_branch === form.target_branch &&
-      form.target_branch !== ''
-    ) {
-      setForm(prev => ({ ...prev, target_branch: '' }))
+  const handleSubmit = async () => {
+    if (!currentNIT || !currentBranch || !targetNIT) {
+      setError('Please select current NIT, branch, and target NIT.')
+      return
     }
-  }, [form.current_nit, form.current_branch])
-
-  const [result, setResult] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setLoading(true)
     setError('')
+    setLoading(true)
     setResult(null)
-
+    setShowList(false)
     try {
       const res = await getAdvisor(
-        token,
-        form.current_nit,
-        form.current_branch,
-        form.target_nit,
-        form.target_branch
+        token, currentNIT, currentBranch,
+        targetNIT, targetBranch
       )
       setResult(res.data)
     } catch (err) {
-      setError(
-        err.response?.data?.detail ||
-        'Something went wrong. Try again.'
-      )
+      setError('Something went wrong. Try again.')
     } finally {
       setLoading(false)
     }
   }
 
-  const isSameNIT = form.current_nit &&
-    form.target_nit &&
-    form.current_nit === form.target_nit
-
-  const recColor = {
-    FLOAT: 'bg-green-50 border-green-200',
-    LOCK:  'bg-amber-50 border-amber-200',
-    SLIDE: 'bg-blue-50  border-blue-200'
+  const bucketColor = bucket => {
+    if (bucket === 'Safe')      return 'text-green-600'
+    if (bucket === 'Target')    return 'text-amber-600'
+    if (bucket === 'Ambitious') return 'text-red-500'
+    return 'text-gray-600'
   }
 
-  const recTextColor = {
-    FLOAT: 'text-green-700',
-    LOCK:  'text-amber-700',
-    SLIDE: 'text-blue-700'
-  }
-
-  const riskBadge = {
-    'LOW':       'bg-green-100 text-green-700',
-    'MEDIUM':    'bg-amber-100 text-amber-700',
-    'HIGH':      'bg-red-100   text-red-600',
-    'VERY HIGH': 'bg-red-200   text-red-700'
+  const recColor = rec => {
+    if (rec === 'FLOAT') return 'text-green-700 bg-green-50 border-green-200'
+    if (rec === 'SLIDE') return 'text-blue-700 bg-blue-50 border-blue-200'
+    return 'text-gray-800 bg-gray-50 border-gray-200'
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-xl mx-auto">
-
+    <div className="min-h-screen bg-gray-50">
+      <div className="bg-blue-900 text-white px-6 py-5">
         <button
           onClick={() => navigate('/dashboard')}
-          className="text-blue-600 text-sm mb-4 hover:underline"
+          className="text-blue-300 text-sm mb-2 hover:text-white"
         >
           ← Back to Dashboard
         </button>
-
-        <h1 className="text-2xl font-bold text-blue-900 mb-1">
+        <h1 className="text-xl font-bold">
           Lock / Float / Slide Advisor
         </h1>
-        <p className="text-gray-400 text-sm mb-2">
+        <p className="text-blue-200 text-sm mt-1">
           Enter your current allocation and your target to get
           a data-driven recommendation.
         </p>
+      </div>
 
-        {/* Explanation */}
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-6 text-xs text-blue-800">
-          <p className="font-semibold mb-1">What do these mean?</p>
-          <p><strong>LOCK</strong> — Accept current seat and exit counselling</p>
-          <p><strong>FLOAT</strong> — Keep current seat and try for a better NIT</p>
-          <p><strong>SLIDE</strong> — Try for a better branch at the SAME NIT
-            (releases current branch — risky)</p>
+      <div className="max-w-2xl mx-auto px-4 py-6">
+
+        {/* Definitions */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4 text-sm">
+          <p className="font-semibold text-gray-700 mb-2">
+            What do these mean?
+          </p>
+          <p className="mb-1">
+            <span className="font-bold text-gray-800">LOCK</span>
+            {' — '}Accept current seat and exit counselling
+          </p>
+          <p className="mb-1">
+            <span className="font-bold text-green-700">FLOAT</span>
+            {' — '}Keep current seat and try for a better NIT
+          </p>
+          <p>
+            <span className="font-bold text-blue-700">SLIDE</span>
+            {' — '}Try for a better branch at the SAME NIT
+            (releases current branch — risky)
+          </p>
         </div>
 
         {/* Form */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-
-            {/* Current allocation */}
-            <div>
-              <p className="text-sm font-semibold text-gray-700 mb-3">
-                Current Allocation
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">
-                    NIT
-                  </label>
-                  <select
-                    value={form.current_nit}
-                    onChange={e => setForm({...form, current_nit: e.target.value})}
-                    required
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
-                  >
-                    <option value="">Select NIT</option>
-                    {nitList.map(n => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">
-                    Branch
-                  </label>
-                  <select
-                    value={form.current_branch}
-                    onChange={e => setForm({...form, current_branch: e.target.value})}
-                    required
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
-                  >
-                    <option value="">Select Branch</option>
-                    {branchOptions.map(b => (
-                      <option key={b.code} value={b.code}>{b.code}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-gray-100" />
-              <span className="text-xs text-gray-400">wants to upgrade to</span>
-              <div className="flex-1 h-px bg-gray-100" />
-            </div>
-
-            {/* Target */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-semibold text-gray-700">
-                  Target
-                </p>
-                {isSameNIT && (
-                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                    Same NIT → SLIDE scenario
-                  </span>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">
-                    Target NIT
-                  </label>
-                  <select
-                    value={form.target_nit}
-                    onChange={e => setForm({...form, target_nit: e.target.value})}
-                    required
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
-                  >
-                    <option value="">Select NIT</option>
-                    {nitList.map(n => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">
-                    Target Branch
-                  </label>
-                  <select
-                    value={form.target_branch}
-                    onChange={e => setForm({...form, target_branch: e.target.value})}
-                    // required
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
-                  >
-                    <option value="">Any branch</option>
-                    {branchOptions.map(b => {
-                      const isSameCombo =
-                        form.current_nit === form.target_nit &&
-                        b.code === form.current_branch
-                      return (
-                        <option
-                          key={b.code}
-                          value={b.code}
-                          disabled={isSameCombo}
-                        >
-                          {b.code}{isSameCombo ? ' (current seat)' : ''}
-                        </option>
-                      )
-                    })}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 text-red-600 text-sm">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="bg-blue-900 text-white font-semibold py-2.5 rounded-xl hover:bg-blue-800 disabled:opacity-50 text-sm"
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 mb-4">
+          <p className="text-sm font-semibold text-gray-700 mb-3">
+            Current Allocation
+          </p>
+          <div className="flex gap-3 mb-4">
+            <select
+              value={currentNIT}
+              onChange={e => setCurrentNIT(e.target.value)}
+              className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-blue-400"
             >
-              {loading ? 'Analysing...' : 'Get Recommendation'}
-            </button>
+              <option value="">Select NIT</option>
+              {nitList.map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <select
+              value={currentBranch}
+              onChange={e => setCurrentBranch(e.target.value)}
+              className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-blue-400"
+            >
+              <option value="">Select Branch</option>
+              {branchOptions.map(b => (
+                <option key={b.code} value={b.code}>{b.code}</option>
+              ))}
+            </select>
+          </div>
 
-          </form>
+          <p className="text-xs text-center text-gray-400 mb-3">
+            wants to upgrade to
+          </p>
+
+          <p className="text-sm font-semibold text-gray-700 mb-3">
+            Target
+          </p>
+          <div className="flex gap-3 mb-4">
+            <select
+              value={targetNIT}
+              onChange={e => setTargetNIT(e.target.value)}
+              className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-blue-400"
+            >
+              <option value="">Select NIT</option>
+              {nitList.map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <select
+              value={targetBranch}
+              onChange={e => setTargetBranch(e.target.value)}
+              className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-blue-400"
+            >
+              <option value="Any branch">Any branch</option>
+              {branchOptions.map(b => (
+                <option key={b.code} value={b.code}>{b.code}</option>
+              ))}
+            </select>
+          </div>
+
+          {error && (
+            <p className="text-red-500 text-sm mb-3">{error}</p>
+          )}
+
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="w-full bg-blue-900 text-white py-3 rounded-xl font-semibold text-sm hover:bg-blue-800 disabled:opacity-50"
+          >
+            {loading ? 'Analysing...' : 'Get Recommendation'}
+          </button>
         </div>
 
         {/* Result */}
         {result && (
-          <div className="flex flex-col gap-4">
-
-            <div className={`border rounded-2xl p-5 ${recColor[result.recommendation] || 'bg-gray-50 border-gray-200'}`}>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="font-semibold text-gray-800">
+          <>
+            {/* Main recommendation card */}
+            <div className={`rounded-2xl border p-5 mb-4 ${recColor(result.recommendation)}`}>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium opacity-60">
                   Recommendation
-                </h2>
-                <span className={`text-xs font-medium px-2 py-1 rounded-full ${riskBadge[result.risk_level] || 'bg-gray-100 text-gray-600'}`}>
+                </p>
+                <span className="text-xs font-semibold opacity-60">
                   Risk: {result.risk_level}
                 </span>
               </div>
-
-              <p className={`text-3xl font-bold mb-2 ${recTextColor[result.recommendation] || 'text-gray-800'}`}>
+              <p className="text-4xl font-black mb-3">
                 {result.recommendation}
               </p>
-
-              <p className="text-sm text-gray-600 leading-relaxed">
+              <p className="text-sm leading-relaxed mb-4">
                 {result.reason}
               </p>
 
-              <div className="mt-4 grid grid-cols-3 gap-3">
-                <div className="bg-white rounded-xl p-3 text-center">
-                  <p className="text-xs text-gray-400 mb-1">Current</p>
-                  <p className="font-semibold text-gray-800 text-xs">
-                    {result.current_allocation}
+              {/* Current vs Target vs Probability */}
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-white bg-opacity-60 rounded-xl p-3">
+                  <p className="text-xs opacity-50 mb-1">Current</p>
+                  <p className="font-semibold text-sm">
+                    {result.current_branch || currentBranch}
                   </p>
-                  <p className="text-xs text-blue-600 font-medium">
-                    {result.current_branch}
-                  </p>
-                </div>
-                <div className="bg-white rounded-xl p-3 text-center">
-                  <p className="text-xs text-gray-400 mb-1">Target</p>
-                  <p className="font-semibold text-gray-800 text-xs">
-                    {result.target_nit}
-                  </p>
-                  <p className="text-xs text-blue-600 font-medium">
-                    {result.target_branch || 'Best available'}
+                  <p className="text-xs opacity-50">
+                    {result.current_nirf_display}
                   </p>
                 </div>
-                <div className="bg-white rounded-xl p-3 text-center">
-                  <p className="text-xs text-gray-400 mb-1">Probability</p>
-                  <p className="font-bold text-gray-800 text-lg">
-                    {result.target_probability}%
+                <div className="bg-white bg-opacity-60 rounded-xl p-3">
+                  <p className="text-xs opacity-50 mb-1">Target</p>
+                  <p className="font-semibold text-sm">
+                    {result.target_branch || targetBranch}
+                  </p>
+                  <p className="text-xs opacity-50">
+                    {result.target_nirf_display}
+                  </p>
+                </div>
+                <div className="bg-white bg-opacity-60 rounded-xl p-3">
+                  <p className="text-xs opacity-50 mb-1">Probability</p>
+                  <p className="font-bold text-lg">
+                    {result.probability}%
                   </p>
                 </div>
               </div>
 
-              {result.same_nit && (
-                <div className="mt-3 bg-blue-100 rounded-xl px-3 py-2 text-xs text-blue-800">
-                  Same NIT detected — this is a SLIDE scenario (branch upgrade within same NIT)
+              {/* Preference list positions */}
+              {(result.current_pref_no || result.target_pref_no) && (
+                <div className="flex gap-3 mt-3">
+                  {result.current_pref_no && (
+                    <div className="bg-white bg-opacity-60 rounded-xl p-3 flex-1 text-center">
+                      <p className="text-xs opacity-50 mb-1">
+                        Your list position (current)
+                      </p>
+                      <p className="font-bold text-lg">
+                        #{result.current_pref_no}
+                      </p>
+                    </div>
+                  )}
+                  {result.target_pref_no && (
+                    <div className="bg-white bg-opacity-60 rounded-xl p-3 flex-1 text-center">
+                      <p className="text-xs opacity-50 mb-1">
+                        Your list position (target)
+                      </p>
+                      <p className="font-bold text-lg">
+                        #{result.target_pref_no}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* Options */}
-            <div className="bg-white rounded-2xl border border-gray-100 p-5">
-              <h2 className="font-semibold text-gray-800 mb-4">
-                All Options Explained
-              </h2>
-              {Object.entries(result.options || {}).map(([key, val]) => (
-                <div
-                  key={key}
-                  className={`rounded-xl p-4 mb-3 border ${
-                    key === result.recommendation
-                      ? 'border-blue-200 bg-blue-50'
-                      : 'border-gray-100 bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className={`font-bold text-sm ${
-                      key === result.recommendation
-                        ? 'text-blue-900'
-                        : 'text-gray-500'
-                    }`}>
-                      {key}
-                    </span>
-                    {key === result.recommendation && (
-                      <span className="text-xs bg-blue-900 text-white px-2 py-0.5 rounded-full">
-                        Recommended
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500 mb-2">
-                    {val.description}
-                  </p>
-                  <div className="flex gap-4">
-                    <div className="flex-1">
-                      <p className="text-xs text-green-600 font-medium">Pro</p>
-                      <p className="text-xs text-gray-600">{val.pro}</p>
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-xs text-red-500 font-medium">Con</p>
-                      <p className="text-xs text-gray-600">{val.con}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {/* Button to view better preferences */}
+            {result.better_preferences &&
+             result.better_preferences.length > 0 && (
+              <button
+                onClick={() => setShowList(!showList)}
+                className="w-full bg-white border border-blue-200 text-blue-800 py-3 rounded-xl font-semibold text-sm hover:bg-blue-50 mb-4"
+              >
+                {showList
+                  ? 'Hide preference list'
+                  : `View ${result.better_preferences.length} options better than your current seat`
+                }
+              </button>
+            )}
 
-          </div>
+            {/* Better preferences modal/panel */}
+            {showList && result.better_preferences?.length > 0 && (
+              <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
+                <p className="text-sm font-semibold text-gray-800 mb-1">
+                  Options ranked higher than your current seat
+                </p>
+                <p className="text-xs text-gray-400 mb-3">
+                  These are all the NIT+branch combinations that
+                  appear ABOVE your current allocation in your
+                  generated preference list. CCMT will try to allot
+                  these first before reaching your current seat.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="text-left py-2 text-gray-400 font-medium">
+                          #
+                        </th>
+                        <th className="text-left py-2 text-gray-400 font-medium">
+                          NIT
+                        </th>
+                        <th className="text-left py-2 text-gray-400 font-medium">
+                          Branch
+                        </th>
+                        <th className="text-left py-2 text-gray-400 font-medium">
+                          Prob
+                        </th>
+                        <th className="text-left py-2 text-gray-400 font-medium">
+                          Bucket
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.better_preferences.map((p, i) => (
+                        <tr
+                          key={i}
+                          className="border-b border-gray-50"
+                        >
+                          <td className="py-2 text-gray-400">
+                            {p.preference_no}
+                          </td>
+                          <td className="py-2 font-medium text-gray-800">
+                            {p.nit_name}
+                          </td>
+                          <td className="py-2 text-gray-600">
+                            {p.branch}
+                          </td>
+                          <td className="py-2 font-semibold text-blue-800">
+                            {p.probability}%
+                          </td>
+                          <td className={`py-2 font-semibold ${bucketColor(p.bucket)}`}>
+                            {p.bucket}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* All 3 options explained */}
+            {result.all_options && (
+              <div className="bg-white rounded-2xl border border-gray-100 p-5">
+                <p className="text-sm font-semibold text-gray-800 mb-4">
+                  All Options Explained
+                </p>
+                {Object.entries(result.all_options).map(
+                  ([key, opt]) => (
+                    <div
+                      key={key}
+                      className={`rounded-xl border p-4 mb-3 ${
+                        result.recommendation === key
+                          ? 'border-blue-300 bg-blue-50'
+                          : 'border-gray-100 bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="font-bold text-gray-800 text-sm">
+                          {opt.title}
+                        </p>
+                        {result.recommendation === key && (
+                          <span className="text-xs bg-blue-900 text-white px-2 py-0.5 rounded-full">
+                            Recommended
+                          </span>
+                        )}
+                        {opt.safe && (
+                          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                            Safe
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-600 mb-2">
+                        {opt.definition}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        <span className="font-medium">Use when:</span>{' '}
+                        {opt.use_when}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        <span className="font-medium">Risk:</span>{' '}
+                        {opt.risk}
+                      </p>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
