@@ -1,0 +1,79 @@
+{
+  "pre_counselling_r1": {
+    "Last Year (Baseline)": {
+      "mae": 41.88,
+      "rmse": 96.91,
+      "n": 304,
+      "coverage": 91.6
+    },
+    "3-Year Average": {
+      "mae": 64.6,
+      "rmse": 96.57,
+      "n": 307,
+      "coverage": 92.5
+    },
+    "Trend-Adjusted": {
+      "mae": 62.83,
+      "rmse": 108.53,
+      "n": 295,
+      "coverage": 88.9
+    },
+    "GATE-Difficulty Adjusted (Novel)": {
+      "mae": 63.44,
+      "rmse": 108.93,
+      "n": 295,
+      "coverage": 88.9
+    }
+  },
+  "in_counselling_round_ratio": {
+    "Round 2": {
+      "mae": 30.51,
+      "rmse": 83.1,
+      "n": 310,
+      "coverage": 93.4
+    },
+    "Round 3": {
+      "mae": 35.97,
+      "rmse": 89.69,
+      "n": 246,
+      "coverage": 74.1
+    },
+    "Special Round 1": {
+      "mae": 50.93,
+      "rmse": 96.97,
+      "n": 293,
+      "coverage": 88.3
+    },
+    "Special Round 2": {
+      "mae": 64.77,
+      "rmse": 114.24,
+      "n": 227,
+      "coverage": 68.4
+    },
+    "National Spot Round": {
+      "mae": 57.05,
+      "rmse": 102.15,
+      "n": 257,
+      "coverage": 77.4
+    }
+  },
+  "avg_ratios": {
+    "Round 2": 0.940637455470892,
+    "Round 3": 0.9234826854578966,
+    "Special Round 1": 0.8666395701763612,
+    "Special Round 2": 0.8407935404819499,
+    "National Spot Round": 0.8258673429372765
+  },
+  "meta": {
+    "train_years": [
+      2021,
+      2022,
+      2023,
+      2024,
+      2025
+    ],
+    "test_year": 2026,
+    "test_combos": 332,
+    "min_years_required": 2
+  }
+}
