@@ -161,12 +161,17 @@ async def score_nit_programme(db, nit, programme, student,
         else:
             factor5 = 4
 
+    # Factor 6: Academic background match (5pts max)
+    # Uses B.Tech branch and CGPA from student CV
+    from app.cv_extractor import get_cv_score_adjustment
+    cv_adjustment = get_cv_score_adjustment(student)
+
     # Home state bonus
     home_nit   = student.get("home_state_nit", "")
     home_bonus = 5 if nit.get("name") == home_nit else 0
 
     total = (factor1 + factor2 + factor3 +
-             factor4 + factor5 + home_bonus)
+             factor4 + factor5 + home_bonus + cv_adjustment)
 
     if probability >= 80:
         bucket = "Safe"
@@ -184,6 +189,9 @@ async def score_nit_programme(db, nit, programme, student,
         "programme_id":           prog_id,
         "branch":                 branch,
         "branch_full":            programme.get("official_name"),
+        "cv_adjustment":          cv_adjustment,
+        "btech_branch":           student.get("btech_branch"),
+        "btech_cgpa":             student.get("btech_cgpa"),
         "location":               nit.get("location"),
         "region":                 nit.get("region"),
         "nirf_rank":              nirf_display,
@@ -206,6 +214,7 @@ async def score_nit_programme(db, nit, programme, student,
             "sentiment_factor":   round(factor3, 1),
             "location_factor":    round(factor4, 1),
             "branch_factor":      round(factor5, 1),
+            "cv_adjustment":      cv_adjustment,
             "home_bonus":         home_bonus
         }
     }

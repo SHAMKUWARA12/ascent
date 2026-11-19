@@ -72,3 +72,21 @@ export const updateLocationPreferences = (data, token) =>
 
 export const updateConstraints = (data, token) =>
   API.post(`/profile/constraints?token=${token}`, data)
+
+// ---------- Student CV ---------- 
+
+export const uploadCV = (token, file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return axios.post(
+    `${API_BASE}/profile/cv?token=${token}`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  )
+}
+
+export const setCVManual = (token, btech_branch, btech_cgpa) =>
+  axios.post(
+    `${API_BASE}/profile/cv-manual?token=${token}` +
+    `&btech_branch=${btech_branch}&btech_cgpa=${btech_cgpa}`
+  )

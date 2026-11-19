@@ -1,0 +1,8 @@
+{
+  "phase3b_baseline_mae": 41.9,
+  "phase3c_best_model": "Last Year Baseline",
+  "phase3c_best_mae": 39.78,
+  "phase3c_ensemble_mae": 88.71,
+  "improvement_over_baseline": 2.12,
+  "research_conclusion": "Multi-criteria ML approach improves over single-criterion baseline"
+}

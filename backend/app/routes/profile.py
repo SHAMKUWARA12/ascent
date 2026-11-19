@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from app.database import get_db
 from app.auth import decode_token
+from fastapi import APIRouter, HTTPException, UploadFile, File
 
 router = APIRouter()
 
@@ -187,3 +188,118 @@ async def get_profile(token: str):
         raise HTTPException(status_code=404, detail="Student not found")
 
     return student
+
+# ---------- Student CV ----------
+
+@router.post("/profile/cv")
+async def upload_cv(token: str, file: UploadFile = File(...)):
+    """
+    Upload student CV PDF and extract B.Tech branch + CGPA.
+    Stores extracted data in student MongoDB document.
+    """
+    db      = get_db()
+    payload = decode_token(token)
+    email   = payload.get("sub")
+
+    student = await db["students"].find_one({"email": email})
+    if not student:
+        raise HTTPException(
+            status_code=404, detail="Student not found"
+        )
+
+    # Validate file type
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF files are accepted"
+        )
+
+    # Read file bytes
+    pdf_bytes = await file.read()
+
+    if len(pdf_bytes) > 5 * 1024 * 1024:  # 5MB limit
+        raise HTTPException(
+            status_code=400,
+            detail="File too large. Maximum size is 5MB."
+        )
+
+    # Extract CV fields
+    from app.cv_extractor import extract_cv_fields
+    extracted = extract_cv_fields(pdf_bytes)
+
+    # Store in MongoDB
+    await db["students"].update_one(
+        {"email": email},
+        {"$set": {
+            "btech_branch":          extracted["btech_branch"],
+            "btech_cgpa":            extracted["btech_cgpa"],
+            "cv_branch_confidence":  extracted["branch_confidence"],
+            "cv_cgpa_confidence":    extracted["cgpa_confidence"],
+            "cv_uploaded":           True,
+            "cv_extraction_success": extracted["extraction_success"],
+        }}
+    )
+
+    return {
+        "success":          True,
+        "btech_branch":     extracted["btech_branch"],
+        "btech_cgpa":       extracted["btech_cgpa"],
+        "branch_confidence": extracted["branch_confidence"],
+        "cgpa_confidence":  extracted["cgpa_confidence"],
+        "extraction_success": extracted["extraction_success"],
+        "message":          (
+            f"Extracted: Branch={extracted['btech_branch']}, "
+            f"CGPA={extracted['btech_cgpa']}"
+            if extracted["extraction_success"]
+            else "Could not extract data. "
+                 "Please fill in manually."
+        ),
+        "error": extracted.get("error")
+    }
+
+
+@router.post("/profile/cv-manual")
+async def set_cv_manual(
+    token: str,
+    btech_branch: str = "CS_IT",
+    btech_cgpa: float = 8.0
+):
+    """
+    Manual fallback if CV extraction fails.
+    Student can type their branch and CGPA directly.
+    """
+    db      = get_db()
+    payload = decode_token(token)
+    email   = payload.get("sub")
+
+    valid_branches = [
+        "CS_IT", "ECE_EE", "MECHANICAL",
+        "CIVIL", "CHEMICAL", "OTHER"
+    ]
+    if btech_branch not in valid_branches:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Branch must be one of {valid_branches}"
+        )
+
+    if not 0 < btech_cgpa <= 10:
+        raise HTTPException(
+            status_code=400,
+            detail="CGPA must be between 0 and 10"
+        )
+
+    await db["students"].update_one(
+        {"email": email},
+        {"$set": {
+            "btech_branch":   btech_branch,
+            "btech_cgpa":     btech_cgpa,
+            "cv_uploaded":    False,
+            "cv_manual_entry": True,
+        }}
+    )
+
+    return {
+        "success":      True,
+        "btech_branch": btech_branch,
+        "btech_cgpa":   btech_cgpa
+    }

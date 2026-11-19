@@ -1,0 +1,68 @@
+{
+  "results": {
+    "Baseline (prev R1)": {
+      "mae": 46.73,
+      "rmse": 72.29,
+      "n": 1495
+    },
+    "Ridge Regression": {
+      "mae": 67.37,
+      "rmse": 82.15,
+      "vs_baseline": -20.64
+    },
+    "Random Forest": {
+      "mae": 98.74,
+      "rmse": 109.06,
+      "vs_baseline": -52.01
+    },
+    "Gradient Boosting": {
+      "mae": 97.65,
+      "rmse": 107.72,
+      "vs_baseline": -50.92
+    },
+    "Ensemble": {
+      "mae": 87.51,
+      "rmse": 98.38,
+      "vs_baseline": -40.78
+    }
+  },
+  "cv": {
+    "2022": {
+      "ridge_mae": 72.1,
+      "baseline_mae": 81.6,
+      "n": 856
+    },
+    "2023": {
+      "ridge_mae": 52.0,
+      "baseline_mae": 62.8,
+      "n": 950
+    },
+    "2024": {
+      "ridge_mae": 70.4,
+      "baseline_mae": 39.9,
+      "n": 1307
+    },
+    "2025": {
+      "ridge_mae": 66.0,
+      "baseline_mae": 34.1,
+      "n": 1483
+    }
+  },
+  "best_model": "Baseline (prev R1)",
+  "best_mae": 46.73,
+  "baseline_mae_r1": 39.8,
+  "feature_names": [
+    "prev_year_r1_score",
+    "prev_year_same_round",
+    "avg_3yr_same_round",
+    "round_number",
+    "round_ratio_expected",
+    "gate_shift",
+    "nirf_rank_sort",
+    "seat_count",
+    "category_enc",
+    "branch_enc",
+    "n_years_data",
+    "score_level"
+  ]
+}
