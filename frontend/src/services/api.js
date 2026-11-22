@@ -85,6 +85,24 @@ export const uploadCV = (token, file) => {
   )
 }
 
+export const confirmCV = (
+  token, btech_branch, btech_cgpa,
+  confirmed = true, use_in_recommendations = true
+) =>
+  axios.post(
+    `${API_BASE}/profile/cv/confirm?token=${token}` +
+    `&btech_branch=${btech_branch}` +
+    `&btech_cgpa=${btech_cgpa}` +
+    `&confirmed=${confirmed}` +
+    `&use_in_recommendations=${use_in_recommendations}`
+  )
+
+export const toggleCVInRecommendations = (token, use) =>
+  axios.post(
+    `${API_BASE}/profile/cv/toggle?token=${token}` +
+    `&use_in_recommendations=${use}`
+  )
+
 export const setCVManual = (token, btech_branch, btech_cgpa) =>
   axios.post(
     `${API_BASE}/profile/cv-manual?token=${token}` +

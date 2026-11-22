@@ -1,19 +1,19 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from typing import List, Optional
 from app.database import get_db
 from app.auth import decode_token
-from fastapi import APIRouter, HTTPException, UploadFile, File
 
 router = APIRouter()
 
-# ---------- Request Models ----------
+
+# ── Request Models ────────────────────────────────────────
 
 class GATEDetails(BaseModel):
     gate_score: float
     gate_year: int
     gate_air: Optional[int] = None
-    category: str  # UR, OBC, SC, ST, EWS
+    category: str
 
 class PersonalDetails(BaseModel):
     gender: str
@@ -21,50 +21,51 @@ class PersonalDetails(BaseModel):
     domicile_state: str
 
 class BranchPreferences(BaseModel):
-    priorities: List[str]  # ["CSE", "AI", "DS", "IT"]
+    priorities: List[str]
     any_branch: bool = False
     strict_filter: bool = False
 
 class LocationPreferences(BaseModel):
-    preferred_region: str  # East, West, North, South, Any
+    preferred_region: str
     states_to_avoid: Optional[List[str]] = []
 
 class Constraints(BaseModel):
-    risk_appetite: str       # Safe, Moderate, Ambitious
-    mtech_goal: str          # Industry, Research, Undecided
-    fee_budget: int          # annual in rupees
+    risk_appetite: str
+    mtech_goal: str
+    fee_budget: int
     hostel_needed: bool
     has_backlogs: bool
     btec_cgpa: Optional[float] = None
 
-# ---------- Save GATE Details ----------
+
+# ── Save GATE Details ─────────────────────────────────────
 
 @router.post("/profile/gate")
 async def save_gate_details(data: GATEDetails, token: str):
-    db = get_db()
+    db      = get_db()
     payload = decode_token(token)
-    email = payload.get("sub")
+    email   = payload.get("sub")
 
     await db["students"].update_one(
         {"email": email},
         {"$set": {
             "gate_score": data.gate_score,
-            "gate_year": data.gate_year,
-            "gate_air": data.gate_air,
-            "category": data.category.upper()
+            "gate_year":  data.gate_year,
+            "gate_air":   data.gate_air,
+            "category":   data.category.upper()
         }}
     )
     return {"message": "GATE details saved successfully"}
 
-# ---------- Save Personal Details ----------
+
+# ── Save Personal Details ─────────────────────────────────
 
 @router.post("/profile/personal")
 async def save_personal_details(data: PersonalDetails, token: str):
-    db = get_db()
+    db      = get_db()
     payload = decode_token(token)
-    email = payload.get("sub")
+    email   = payload.get("sub")
 
-    # Check home state advantage
     home_state_nits = {
         "Andhra Pradesh":   "NIT Andhra Pradesh",
         "Assam":            "NIT Silchar",
@@ -101,8 +102,8 @@ async def save_personal_details(data: PersonalDetails, token: str):
     await db["students"].update_one(
         {"email": email},
         {"$set": {
-            "gender": data.gender,
-            "pwd_status": data.pwd_status,
+            "gender":         data.gender,
+            "pwd_status":     data.pwd_status,
             "domicile_state": data.domicile_state,
             "home_state_nit": home_nit
         }}
@@ -110,92 +111,102 @@ async def save_personal_details(data: PersonalDetails, token: str):
 
     response = {"message": "Personal details saved successfully"}
     if home_nit:
-        response["home_state_advantage"] = f"Home state NIT detected: {home_nit}"
-
+        response["home_state_advantage"] = (
+            f"Home state NIT detected: {home_nit}"
+        )
     return response
 
-# ---------- Save Branch Preferences ----------
+
+# ── Save Branch Preferences ───────────────────────────────
 
 @router.post("/profile/branches")
 async def save_branch_preferences(data: BranchPreferences, token: str):
-    db = get_db()
+    db      = get_db()
     payload = decode_token(token)
-    email = payload.get("sub")
+    email   = payload.get("sub")
 
     await db["students"].update_one(
         {"email": email},
         {"$set": {
             "branch_priorities": data.priorities,
-            "any_branch": data.any_branch,
-            "strict_filter": data.strict_filter
+            "any_branch":        data.any_branch,
+            "strict_filter":     data.strict_filter
         }}
     )
     return {"message": "Branch preferences saved successfully"}
 
-# ---------- Save Location Preferences ----------
+
+# ── Save Location Preferences ─────────────────────────────
 
 @router.post("/profile/location")
-async def save_location_preferences(data: LocationPreferences, token: str):
-    db = get_db()
+async def save_location_preferences(
+    data: LocationPreferences, token: str
+):
+    db      = get_db()
     payload = decode_token(token)
-    email = payload.get("sub")
+    email   = payload.get("sub")
 
     await db["students"].update_one(
         {"email": email},
         {"$set": {
             "preferred_region": data.preferred_region,
-            "states_to_avoid": data.states_to_avoid
+            "states_to_avoid":  data.states_to_avoid
         }}
     )
     return {"message": "Location preferences saved successfully"}
 
-# ---------- Save Constraints ----------
+
+# ── Save Constraints ──────────────────────────────────────
 
 @router.post("/profile/constraints")
 async def save_constraints(data: Constraints, token: str):
-    db = get_db()
+    db      = get_db()
     payload = decode_token(token)
-    email = payload.get("sub")
+    email   = payload.get("sub")
 
     await db["students"].update_one(
         {"email": email},
         {"$set": {
-            "risk_appetite": data.risk_appetite,
-            "mtech_goal": data.mtech_goal,
-            "fee_budget": data.fee_budget,
-            "hostel_needed": data.hostel_needed,
-            "has_backlogs": data.has_backlogs,
-            "btec_cgpa": data.btec_cgpa,
+            "risk_appetite":    data.risk_appetite,
+            "mtech_goal":       data.mtech_goal,
+            "fee_budget":       data.fee_budget,
+            "hostel_needed":    data.hostel_needed,
+            "has_backlogs":     data.has_backlogs,
+            "btec_cgpa":        data.btec_cgpa,
             "profile_complete": True
         }}
     )
     return {"message": "Profile completed successfully"}
 
-# ---------- Get Full Profile ----------
+
+# ── Get Full Profile ──────────────────────────────────────
 
 @router.get("/profile")
 async def get_profile(token: str):
-    db = get_db()
+    db      = get_db()
     payload = decode_token(token)
-    email = payload.get("sub")
+    email   = payload.get("sub")
 
     student = await db["students"].find_one(
         {"email": email},
         {"_id": 0, "password": 0}
     )
-
     if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
-
+        raise HTTPException(
+            status_code=404, detail="Student not found"
+        )
     return student
 
-# ---------- Student CV ----------
+
+# ── CV Upload (extract only, not saved yet) ───────────────
 
 @router.post("/profile/cv")
 async def upload_cv(token: str, file: UploadFile = File(...)):
     """
-    Upload student CV PDF and extract B.Tech branch + CGPA.
-    Stores extracted data in student MongoDB document.
+    Upload CV PDF and extract B.Tech branch + CGPA.
+    Returns extracted data for student to CONFIRM.
+    Data is NOT saved to MongoDB until student confirms
+    via /profile/cv/confirm endpoint.
     """
     db      = get_db()
     payload = decode_token(token)
@@ -207,70 +218,74 @@ async def upload_cv(token: str, file: UploadFile = File(...)):
             status_code=404, detail="Student not found"
         )
 
-    # Validate file type
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=400,
-            detail="Only PDF files are accepted"
+            detail="Only PDF files accepted"
         )
 
-    # Read file bytes
     pdf_bytes = await file.read()
 
-    if len(pdf_bytes) > 5 * 1024 * 1024:  # 5MB limit
+    if len(pdf_bytes) > 5 * 1024 * 1024:
         raise HTTPException(
             status_code=400,
-            detail="File too large. Maximum size is 5MB."
+            detail="File too large. Max 5MB."
         )
 
-    # Extract CV fields
+    if len(pdf_bytes) < 1000:
+        raise HTTPException(
+            status_code=400,
+            detail="File too small to be a valid CV."
+        )
+
     from app.cv_extractor import extract_cv_fields
     extracted = extract_cv_fields(pdf_bytes)
 
-    # Store in MongoDB
-    await db["students"].update_one(
-        {"email": email},
-        {"$set": {
-            "btech_branch":          extracted["btech_branch"],
-            "btech_cgpa":            extracted["btech_cgpa"],
-            "cv_branch_confidence":  extracted["branch_confidence"],
-            "cv_cgpa_confidence":    extracted["cgpa_confidence"],
-            "cv_uploaded":           True,
-            "cv_extraction_success": extracted["extraction_success"],
-        }}
-    )
-
     return {
-        "success":          True,
-        "btech_branch":     extracted["btech_branch"],
-        "btech_cgpa":       extracted["btech_cgpa"],
-        "branch_confidence": extracted["branch_confidence"],
-        "cgpa_confidence":  extracted["cgpa_confidence"],
-        "extraction_success": extracted["extraction_success"],
-        "message":          (
-            f"Extracted: Branch={extracted['btech_branch']}, "
-            f"CGPA={extracted['btech_cgpa']}"
+        "extraction_success":  extracted["extraction_success"],
+        "btech_branch":        extracted["btech_branch"],
+        "btech_cgpa":          extracted["btech_cgpa"],
+        "branch_display":      extracted.get("branch_display"),
+        "branch_confidence":   extracted["branch_confidence"],
+        "cgpa_confidence":     extracted["cgpa_confidence"],
+        "needs_confirmation":  True,
+        "error":               extracted.get("error"),
+        "message": (
+            "Please review and confirm the extracted details below."
             if extracted["extraction_success"]
-            else "Could not extract data. "
-                 "Please fill in manually."
-        ),
-        "error": extracted.get("error")
+            else (
+                extracted.get("error") or
+                "Could not extract automatically. "
+                "Please fill in manually."
+            )
+        )
     }
 
 
-@router.post("/profile/cv-manual")
-async def set_cv_manual(
+# ── CV Confirm (actually saves to MongoDB) ────────────────
+
+@router.post("/profile/cv/confirm")
+async def confirm_cv(
     token: str,
-    btech_branch: str = "CS_IT",
-    btech_cgpa: float = 8.0
+    btech_branch: str,
+    btech_cgpa: float,
+    confirmed: bool = True,
+    use_in_recommendations: bool = True
 ):
     """
-    Manual fallback if CV extraction fails.
-    Student can type their branch and CGPA directly.
+    Student confirms extracted or manually entered CV data.
+    confirmed=True means student verified this is their data.
+    use_in_recommendations controls whether CV bonus applies.
     """
     db      = get_db()
     payload = decode_token(token)
     email   = payload.get("sub")
+
+    if not confirmed:
+        raise HTTPException(
+            status_code=400,
+            detail="Please confirm the details are correct."
+        )
 
     valid_branches = [
         "CS_IT", "ECE_EE", "MECHANICAL",
@@ -279,27 +294,64 @@ async def set_cv_manual(
     if btech_branch not in valid_branches:
         raise HTTPException(
             status_code=400,
-            detail=f"Branch must be one of {valid_branches}"
+            detail=f"Invalid branch. Must be one of {valid_branches}"
         )
 
-    if not 0 < btech_cgpa <= 10:
+    if not (0 < btech_cgpa <= 10):
         raise HTTPException(
             status_code=400,
             detail="CGPA must be between 0 and 10"
         )
 
+    from app.cv_extractor import BRANCH_DISPLAY
     await db["students"].update_one(
         {"email": email},
         {"$set": {
-            "btech_branch":   btech_branch,
-            "btech_cgpa":     btech_cgpa,
-            "cv_uploaded":    False,
-            "cv_manual_entry": True,
+            "btech_branch":               btech_branch,
+            "btech_branch_display":       BRANCH_DISPLAY.get(
+                                            btech_branch, btech_branch
+                                          ),
+            "btech_cgpa":                 round(btech_cgpa, 2),
+            "cv_confirmed":               True,
+            "cv_uploaded":                True,
+            "use_cv_in_recommendations":  use_in_recommendations,
         }}
     )
 
     return {
-        "success":      True,
-        "btech_branch": btech_branch,
-        "btech_cgpa":   btech_cgpa
+        "success":                True,
+        "btech_branch":           btech_branch,
+        "btech_cgpa":             round(btech_cgpa, 2),
+        "use_in_recommendations": use_in_recommendations,
+        "message":                "Academic background saved."
+    }
+
+
+# ── CV Toggle ─────────────────────────────────────────────
+
+@router.post("/profile/cv/toggle")
+async def toggle_cv_in_recommendations(
+    token: str,
+    use_in_recommendations: bool
+):
+    """Toggle CV bonus on/off without re-uploading."""
+    db      = get_db()
+    payload = decode_token(token)
+    email   = payload.get("sub")
+
+    await db["students"].update_one(
+        {"email": email},
+        {"$set": {
+            "use_cv_in_recommendations": use_in_recommendations
+        }}
+    )
+
+    return {
+        "success":                True,
+        "use_in_recommendations": use_in_recommendations,
+        "message": (
+            "CV background will now affect recommendations."
+            if use_in_recommendations
+            else "CV background excluded from recommendations."
+        )
     }

@@ -11,8 +11,9 @@ async def get_predicted_closing_score(db, institute_code: str,
                                       category: str):
     """
     Returns (most_recent_year_score, std_dev, years_of_data).
-    Uses ONLY the most recent year's closing score as reference —
-    NOT an average. A real predictive model (Phase 3) will replace this.
+    Uses ONLY the most recent year's closing score as reference.
+    Phase 3 research confirmed this is the best available method
+    for pre-counselling prediction (MAE=42, beats all ML models).
     """
     records = await db["ccmt_cutoffs"].find({
         "institute_code": institute_code,
@@ -23,7 +24,6 @@ async def get_predicted_closing_score(db, institute_code: str,
     if not records:
         return None, None, 0
 
-    # Lowest score per year = that year's final closing score
     by_year = {}
     for r in records:
         year  = r["year"]
@@ -36,9 +36,9 @@ async def get_predicted_closing_score(db, institute_code: str,
     if not by_year:
         return None, None, 0
 
-    most_recent_year  = max(by_year.keys())
-    reference_score   = by_year[most_recent_year]
-    years_available   = len(by_year)
+    most_recent_year = max(by_year.keys())
+    reference_score  = by_year[most_recent_year]
+    years_available  = len(by_year)
 
     scores  = list(by_year.values())
     std_dev = (statistics.pstdev(scores)
@@ -98,7 +98,7 @@ async def score_nit_programme(db, nit, programme, student,
         return None
 
     # GATE paper eligibility check
-    student_paper  = student.get("gate_paper", "CS").upper()
+    student_paper   = student.get("gate_paper", "CS").upper()
     accepted_papers = programme.get("gate_papers", ["CS"])
     if student_paper not in accepted_papers:
         return None
@@ -113,10 +113,16 @@ async def score_nit_programme(db, nit, programme, student,
         gate_score, predicted_closing, std_dev
     )
 
-    # Factor 1: Probability (40pts)
+    # ── 5-FACTOR SYSTEM (UNCHANGED) ──────────────────────
+    # These 5 factors are the core of ASCENT's recommendation.
+    # Weights sum to 100 points max (plus home bonus).
+    # This system is NOT modified by the CV feature.
+
+    # Factor 1: Admission Probability (40pts max)
     factor1 = (probability / 100) * 40
 
-    # Factor 2: NIRF rank using nirf_rank_sort (always 1-31)
+    # Factor 2: NIRF rank (20pts max)
+    # Uses nirf_rank_sort (always 1-31, never None)
     nirf_sort = nit.get("nirf_rank_sort") or 31
     if nirf_sort <= 5:
         factor2 = 20
@@ -131,14 +137,14 @@ async def score_nit_programme(db, nit, programme, student,
     else:
         factor2 = 5
 
-    # Factor 3: Sentiment (15pts)
+    # Factor 3: Student Sentiment (15pts max)
     if sentiment_lookup and nit_code in sentiment_lookup:
         sentiment = sentiment_lookup[nit_code]
     else:
         sentiment = 6.0
     factor3 = (sentiment / 10) * 15
 
-    # Factor 4: Location (15pts)
+    # Factor 4: Location match (15pts max)
     preferred_region = student.get("preferred_region", "Any")
     nit_region       = nit.get("region", "")
     if preferred_region == "Any":
@@ -148,7 +154,7 @@ async def score_nit_programme(db, nit, programme, student,
     else:
         factor4 = 5
 
-    # Factor 5: Branch match (10pts)
+    # Factor 5: Branch priority match (10pts max)
     factor5 = 0
     if branch in branch_priorities:
         idx = branch_priorities.index(branch)
@@ -161,18 +167,34 @@ async def score_nit_programme(db, nit, programme, student,
         else:
             factor5 = 4
 
-    # Factor 6: Academic background match (5pts max)
-    # Uses B.Tech branch and CGPA from student CV
-    from app.cv_extractor import get_cv_score_adjustment
-    cv_adjustment = get_cv_score_adjustment(student)
-
-    # Home state bonus
+    # Home state bonus (+5 flat, not part of 5-factor weights)
     home_nit   = student.get("home_state_nit", "")
     home_bonus = 5 if nit.get("name") == home_nit else 0
 
-    total = (factor1 + factor2 + factor3 +
-             factor4 + factor5 + home_bonus + cv_adjustment)
+    # ── 5-FACTOR TOTAL ────────────────────────────────────
+    total_5_factor = (
+        factor1 + factor2 + factor3 +
+        factor4 + factor5 + home_bonus
+    )
 
+    # ── OPTIONAL CV BONUS (SEPARATE from 5-factor) ───────
+    # This is NOT a core factor. It is an optional add-on.
+    # The 5-factor system is unchanged regardless of this.
+    # Student controls this via use_cv_in_recommendations toggle.
+    # Max bonus: +5 (CS_IT branch + CGPA>=8.5)
+    # Max penalty: -4 (non-CS branch + CGPA<7.0)
+
+    cv_bonus = 0
+    if student.get("use_cv_in_recommendations", True):
+        if student.get("cv_confirmed", False):
+            from app.cv_extractor import get_cv_bonus
+            cv_bonus = get_cv_bonus(student)
+
+    # Final total
+    total = total_5_factor + cv_bonus
+
+    # Bucket is determined by PROBABILITY only (not total score)
+    # This ensures CV bonus does not affect Safe/Target/Ambitious
     if probability >= 80:
         bucket = "Safe"
     elif probability >= 40:
@@ -184,38 +206,38 @@ async def score_nit_programme(db, nit, programme, student,
     nirf_display = nit.get("nirf_rank")
 
     return {
-        "nit_code":               nit_code,
-        "nit_name":               nit.get("name"),
-        "programme_id":           prog_id,
-        "branch":                 branch,
-        "branch_full":            programme.get("official_name"),
-        "cv_adjustment":          cv_adjustment,
-        "btech_branch":           student.get("btech_branch"),
-        "btech_cgpa":             student.get("btech_cgpa"),
-        "location":               nit.get("location"),
-        "region":                 nit.get("region"),
-        "nirf_rank":              nirf_display,
-        "nirf_rank_sort":         nirf_sort,
-        "nirf_rank_display":      nit.get("nirf_rank_display"),
-        "nirf_rank_exact":        nit.get("nirf_rank_exact"),
+        "nit_code":                nit_code,
+        "nit_name":                nit.get("name"),
+        "programme_id":            prog_id,
+        "branch":                  branch,
+        "branch_full":             programme.get("official_name"),
+        "location":                nit.get("location"),
+        "region":                  nit.get("region"),
+        "nirf_rank":               nirf_display,
+        "nirf_rank_sort":          nirf_sort,
+        "nirf_rank_display":       nit.get("nirf_rank_display"),
+        "nirf_rank_exact":         nit.get("nirf_rank_exact"),
         "predicted_closing_score": predicted_closing,
-        "score_volatility":       std_dev,
-        "years_of_data":          years_available,
-        "your_score":             gate_score,
-        "category":               cat_key,
-        "admission_probability":  probability,
-        "sentiment_score":        sentiment,
-        "total_score":            round(total, 1),
-        "bucket":                 bucket,
-        "home_state":             nit.get("name") == home_nit,
+        "score_volatility":        std_dev,
+        "years_of_data":           years_available,
+        "your_score":              gate_score,
+        "category":                cat_key,
+        "admission_probability":   probability,
+        "sentiment_score":         sentiment,
+        "total_5_factor_score":    round(total_5_factor, 1),
+        "cv_bonus":                cv_bonus,
+        "cv_included":             cv_bonus != 0,
+        "total_score":             round(total, 1),
+        "bucket":                  bucket,
+        "home_state":              nit.get("name") == home_nit,
         "score_breakdown": {
             "probability_factor": round(factor1, 1),
             "nirf_factor":        round(factor2, 1),
             "sentiment_factor":   round(factor3, 1),
             "location_factor":    round(factor4, 1),
             "branch_factor":      round(factor5, 1),
-            "cv_adjustment":      cv_adjustment,
-            "home_bonus":         home_bonus
+            "home_bonus":         home_bonus,
+            "cv_bonus":           cv_bonus,
         }
     }
 
@@ -243,7 +265,7 @@ async def get_recommendations(token: str):
             detail="Please complete your profile first"
         )
 
-    sentiment_docs   = await db["nit_sentiment"].find(
+    sentiment_docs = await db["nit_sentiment"].find(
         {}, {"_id": 0}
     ).to_list(length=100)
     sentiment_lookup = {
@@ -272,11 +294,16 @@ async def get_recommendations(token: str):
 
     return {
         "student": {
-            "name":       student.get("full_name"),
-            "gate_score": student.get("gate_score"),
-            "category":   student.get("category"),
-            "domicile":   student.get("domicile_state"),
-            "gate_paper": student.get("gate_paper")
+            "name":         student.get("full_name"),
+            "gate_score":   student.get("gate_score"),
+            "category":     student.get("category"),
+            "domicile":     student.get("domicile_state"),
+            "gate_paper":   student.get("gate_paper"),
+            "btech_branch": student.get("btech_branch"),
+            "btech_cgpa":   student.get("btech_cgpa"),
+            "cv_included":  student.get(
+                "use_cv_in_recommendations", False
+            ) and student.get("cv_confirmed", False),
         },
         "total_eligible": len(scored),
         "safe":           safe,
