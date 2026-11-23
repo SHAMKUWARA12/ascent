@@ -73,24 +73,29 @@ export const updateLocationPreferences = (data, token) =>
 export const updateConstraints = (data, token) =>
   API.post(`/profile/constraints?token=${token}`, data)
 
-// ---------- Student CV ---------- 
+// ---------- Student CV ----------
 
 export const uploadCV = (token, file) => {
   const formData = new FormData()
   formData.append('file', file)
-  return axios.post(
-    `${API_BASE}/profile/cv?token=${token}`,
+  return API.post(
+    `/profile/cv?token=${token}`,
     formData,
-    { headers: { 'Content-Type': 'multipart/form-data' } }
+    {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }
   )
 }
 
 export const confirmCV = (
-  token, btech_branch, btech_cgpa,
-  confirmed = true, use_in_recommendations = true
+  token,
+  btech_branch,
+  btech_cgpa,
+  confirmed = true,
+  use_in_recommendations = true
 ) =>
-  axios.post(
-    `${API_BASE}/profile/cv/confirm?token=${token}` +
+  API.post(
+    `/profile/cv/confirm?token=${token}` +
     `&btech_branch=${btech_branch}` +
     `&btech_cgpa=${btech_cgpa}` +
     `&confirmed=${confirmed}` +
@@ -98,13 +103,14 @@ export const confirmCV = (
   )
 
 export const toggleCVInRecommendations = (token, use) =>
-  axios.post(
-    `${API_BASE}/profile/cv/toggle?token=${token}` +
+  API.post(
+    `/profile/cv/toggle?token=${token}` +
     `&use_in_recommendations=${use}`
   )
 
 export const setCVManual = (token, btech_branch, btech_cgpa) =>
-  axios.post(
-    `${API_BASE}/profile/cv-manual?token=${token}` +
-    `&btech_branch=${btech_branch}&btech_cgpa=${btech_cgpa}`
+  API.post(
+    `/profile/cv-manual?token=${token}` +
+    `&btech_branch=${btech_branch}` +
+    `&btech_cgpa=${btech_cgpa}`
   )
