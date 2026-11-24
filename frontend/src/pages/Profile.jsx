@@ -37,57 +37,58 @@ const REGIONS = [
 
 export default function Profile() {
   const { token } = useAuth();
-  const navigate  = useNavigate();
+  const navigate = useNavigate();
 
-  const [step,      setStep]      = useState(0);
-  const [loading,   setLoading]   = useState(false);
-  const [fetching,  setFetching]  = useState(true);
-  const [error,     setError]     = useState("");
-  const [homeNIT,   setHomeNIT]   = useState("");
+  const [step, setStep] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
+  const [error, setError] = useState("");
+  const [homeNIT, setHomeNIT] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [branchList, setBranchList] = useState(FALLBACK_BRANCHES);
 
   // CV state — all variables properly declared
-  const [cvUploading,          setCvUploading]          = useState(false);
-  const [cvExtracted,          setCvExtracted]          = useState(false);
-  const [cvConfirmed,          setCvConfirmed]          = useState(false);
-  const [cvSaved,              setCvSaved]              = useState(false);
-  const [cvError,              setCvError]              = useState("");
-  const [manualBranch,         setManualBranch]         = useState("");
-  const [manualCGPA,           setManualCGPA]           = useState("");
+  const [cvUploading, setCvUploading] = useState(false);
+  const [cvExtracted, setCvExtracted] = useState(false);
+  const [cvConfirmed, setCvConfirmed] = useState(false);
+  const [cvSaved, setCvSaved] = useState(false);
+  const [cvError, setCvError] = useState("");
+  const [manualBranch, setManualBranch] = useState("");
+  const [manualCGPA, setManualCGPA] = useState("");
   const [useInRecommendations, setUseInRecommendations] = useState(true);
+  const [cvCgpaNote, setCvCgpaNote] = useState("");
 
   const [gate, setGate] = useState({
     gate_score: "",
-    gate_year:  2026,
-    gate_air:   "",
-    category:   "OBC",
+    gate_year: 2026,
+    gate_air: "",
+    category: "OBC",
   });
 
   const [personal, setPersonal] = useState({
-    gender:         "Male",
-    pwd_status:     false,
+    gender: "Male",
+    pwd_status: false,
     domicile_state: "",
   });
 
   const [branches, setBranches] = useState({
-    priorities:    ["CSE"],
-    any_branch:    false,
+    priorities: ["CSE"],
+    any_branch: false,
     strict_filter: false,
   });
 
   const [location, setLocation] = useState({
     preferred_region: "Any",
-    states_to_avoid:  [],
+    states_to_avoid: [],
   });
 
   const [constraints, setConstraints] = useState({
-    risk_appetite:  "Moderate",
-    mtech_goal:     "Industry",
-    fee_budget:     150000,
-    hostel_needed:  true,
-    has_backlogs:   false,
-    btec_cgpa:      "",
+    risk_appetite: "Moderate",
+    mtech_goal: "Industry",
+    fee_budget: 150000,
+    hostel_needed: true,
+    has_backlogs: false,
+    btec_cgpa: "",
   });
 
   // Load branch list from backend
@@ -98,21 +99,16 @@ export default function Profile() {
         const branchSet = new Map();
         (data.nits || []).forEach((n) => {
           (n.mtech_programs || []).forEach((p) => {
-            branchSet.set(
-              p.short_name,
-              p.short_name_full || p.short_name
-            );
+            branchSet.set(p.short_name, p.short_name_full || p.short_name);
           });
         });
-        const dynamicBranches = Array.from(
-          branchSet,
-          ([code, name]) => ({ code, name })
-        ).sort((a, b) => a.code.localeCompare(b.code));
+        const dynamicBranches = Array.from(branchSet, ([code, name]) => ({
+          code,
+          name,
+        })).sort((a, b) => a.code.localeCompare(b.code));
         if (dynamicBranches.length > 0) setBranchList(dynamicBranches);
       })
-      .catch((err) =>
-        console.error("Could not load branch list", err)
-      );
+      .catch((err) => console.error("Could not load branch list", err));
   }, []);
 
   // Load existing profile
@@ -123,46 +119,46 @@ export default function Profile() {
   const loadExistingProfile = async () => {
     try {
       const res = await getProfile(token);
-      const p   = res.data;
+      const p = res.data;
 
       if (p.profile_complete) setIsEditing(true);
 
       if (p.gate_score)
         setGate({
           gate_score: p.gate_score ?? "",
-          gate_year:  p.gate_year  ?? 2026,
-          gate_air:   p.gate_air   ?? "",
-          category:   p.category   ?? "OBC",
+          gate_year: p.gate_year ?? 2026,
+          gate_air: p.gate_air ?? "",
+          category: p.category ?? "OBC",
         });
 
       if (p.gender)
         setPersonal({
-          gender:         p.gender         ?? "Male",
-          pwd_status:     p.pwd_status     ?? false,
+          gender: p.gender ?? "Male",
+          pwd_status: p.pwd_status ?? false,
           domicile_state: p.domicile_state ?? "",
         });
 
       if (p.branch_priorities)
         setBranches({
-          priorities:    p.branch_priorities ?? ["CSE"],
-          any_branch:    p.any_branch        ?? false,
-          strict_filter: p.strict_filter     ?? false,
+          priorities: p.branch_priorities ?? ["CSE"],
+          any_branch: p.any_branch ?? false,
+          strict_filter: p.strict_filter ?? false,
         });
 
       if (p.preferred_region)
         setLocation({
           preferred_region: p.preferred_region ?? "Any",
-          states_to_avoid:  p.states_to_avoid  ?? [],
+          states_to_avoid: p.states_to_avoid ?? [],
         });
 
       if (p.risk_appetite)
         setConstraints({
           risk_appetite: p.risk_appetite ?? "Moderate",
-          mtech_goal:    p.mtech_goal    ?? "Industry",
-          fee_budget:    p.fee_budget    ?? 150000,
+          mtech_goal: p.mtech_goal ?? "Industry",
+          fee_budget: p.fee_budget ?? 150000,
           hostel_needed: p.hostel_needed ?? true,
-          has_backlogs:  p.has_backlogs  ?? false,
-          btec_cgpa:     p.btec_cgpa     ?? "",
+          has_backlogs: p.has_backlogs ?? false,
+          btec_cgpa: p.btec_cgpa ?? "",
         });
 
       if (p.home_state_nit) setHomeNIT(p.home_state_nit);
@@ -208,20 +204,17 @@ export default function Profile() {
       const res = await uploadCV(token, file);
       if (res.data.extraction_success) {
         setManualBranch(res.data.btech_branch || "");
-        setManualCGPA(
-          res.data.btech_cgpa ? String(res.data.btech_cgpa) : ""
-        );
+        setManualCGPA(res.data.btech_cgpa ? String(res.data.btech_cgpa) : "");
         setCvExtracted(true);
+        setCvCgpaNote(res.data.cgpa_note || "");
       } else {
         setCvError(
           res.data.error ||
-          "Could not extract automatically. Please fill in manually."
+            "Could not extract automatically. Please fill in manually.",
         );
       }
     } catch (err) {
-      setCvError(
-        "Upload failed. Check the file is a valid PDF and try again."
-      );
+      setCvError("Upload failed. Check the file is a valid PDF and try again.");
     } finally {
       setCvUploading(false);
     }
@@ -244,13 +237,11 @@ export default function Profile() {
         manualBranch,
         parseFloat(manualCGPA) || 8.0,
         true,
-        useInRecommendations
+        useInRecommendations,
       );
       setCvSaved(true);
     } catch (err) {
-      setCvError(
-        err.response?.data?.detail || "Could not save. Try again."
-      );
+      setCvError(err.response?.data?.detail || "Could not save. Try again.");
     }
   };
 
@@ -264,11 +255,11 @@ export default function Profile() {
         await saveGATEDetails(
           {
             gate_score: parseFloat(gate.gate_score),
-            gate_year:  gate.gate_year,
-            gate_air:   gate.gate_air ? parseInt(gate.gate_air) : null,
-            category:   gate.category,
+            gate_year: gate.gate_year,
+            gate_air: gate.gate_air ? parseInt(gate.gate_air) : null,
+            category: gate.category,
           },
-          token
+          token,
         );
       }
 
@@ -290,12 +281,12 @@ export default function Profile() {
         await saveConstraints(
           {
             ...constraints,
-            btec_cgpa:  constraints.btec_cgpa
-                          ? parseFloat(constraints.btec_cgpa)
-                          : null,
+            btec_cgpa: constraints.btec_cgpa
+              ? parseFloat(constraints.btec_cgpa)
+              : null,
             fee_budget: parseInt(constraints.fee_budget),
           },
-          token
+          token,
         );
         setLoading(false);
         setStep(step + 1);
@@ -311,7 +302,7 @@ export default function Profile() {
       setStep(step + 1);
     } catch (err) {
       setError(
-        err.response?.data?.detail || "Something went wrong. Try again."
+        err.response?.data?.detail || "Something went wrong. Try again.",
       );
     } finally {
       setLoading(false);
@@ -332,7 +323,6 @@ export default function Profile() {
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4">
       <div className="max-w-lg mx-auto">
-
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-blue-900 mb-1">
@@ -382,7 +372,6 @@ export default function Profile() {
 
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-
           {/* ── Step 0: GATE Details ── */}
           {step === 0 && (
             <div className="flex flex-col gap-4">
@@ -400,7 +389,8 @@ export default function Profile() {
                     setGate({ ...gate, gate_score: e.target.value })
                   }
                   placeholder="e.g. 615"
-                  min="0" max="1000"
+                  min="0"
+                  max="1000"
                   className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400"
                 />
               </div>
@@ -439,7 +429,8 @@ export default function Profile() {
                 <div className="flex gap-2 flex-wrap">
                   {CATEGORIES.map((cat) => (
                     <button
-                      key={cat} type="button"
+                      key={cat}
+                      type="button"
                       onClick={() => setGate({ ...gate, category: cat })}
                       className={`px-4 py-2 rounded-xl border text-sm font-medium transition-all ${
                         gate.category === cat
@@ -468,7 +459,8 @@ export default function Profile() {
                 <div className="flex gap-3">
                   {["Male", "Female", "Other"].map((g) => (
                     <button
-                      key={g} type="button"
+                      key={g}
+                      type="button"
                       onClick={() => setPersonal({ ...personal, gender: g })}
                       className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all ${
                         personal.gender === g
@@ -526,21 +518,45 @@ export default function Profile() {
                 >
                   <option value="">Select your state</option>
                   {[
-                    "Andhra Pradesh","Assam","Bihar","Chhattisgarh",
-                    "Delhi","Goa","Gujarat","Haryana","Himachal Pradesh",
-                    "Jharkhand","Karnataka","Kerala","Madhya Pradesh",
-                    "Maharashtra","Manipur","Meghalaya","Mizoram",
-                    "Nagaland","Odisha","Punjab","Rajasthan","Sikkim",
-                    "Tamil Nadu","Telangana","Tripura","Uttar Pradesh",
-                    "Uttarakhand","West Bengal",
+                    "Andhra Pradesh",
+                    "Assam",
+                    "Bihar",
+                    "Chhattisgarh",
+                    "Delhi",
+                    "Goa",
+                    "Gujarat",
+                    "Haryana",
+                    "Himachal Pradesh",
+                    "Jharkhand",
+                    "Karnataka",
+                    "Kerala",
+                    "Madhya Pradesh",
+                    "Maharashtra",
+                    "Manipur",
+                    "Meghalaya",
+                    "Mizoram",
+                    "Nagaland",
+                    "Odisha",
+                    "Punjab",
+                    "Rajasthan",
+                    "Sikkim",
+                    "Tamil Nadu",
+                    "Telangana",
+                    "Tripura",
+                    "Uttar Pradesh",
+                    "Uttarakhand",
+                    "West Bengal",
                   ].map((s) => (
-                    <option key={s} value={s}>{s}</option>
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
                   ))}
                 </select>
               </div>
               <div className="flex items-center gap-3">
                 <input
-                  type="checkbox" id="pwd"
+                  type="checkbox"
+                  id="pwd"
                   checked={personal.pwd_status}
                   onChange={(e) =>
                     setPersonal({ ...personal, pwd_status: e.target.checked })
@@ -571,7 +587,8 @@ export default function Profile() {
               <div className="flex gap-2 flex-wrap">
                 {branchList.map((branch) => (
                   <button
-                    key={branch.code} type="button"
+                    key={branch.code}
+                    type="button"
                     onClick={() => toggleBranch(branch.code)}
                     className={`px-3 py-2 rounded-xl border text-xs font-medium transition-all text-left ${
                       branches.priorities.includes(branch.code)
@@ -580,7 +597,9 @@ export default function Profile() {
                     }`}
                   >
                     <span className="block font-semibold">{branch.code}</span>
-                    <span className="block text-xs opacity-75">{branch.name}</span>
+                    <span className="block text-xs opacity-75">
+                      {branch.name}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -605,9 +624,7 @@ export default function Profile() {
                     return (
                       <p key={b} className="text-sm text-blue-800">
                         {i + 1}. {b} —{" "}
-                        {found
-                          ? found.name
-                          : `${b} (invalid — click Reset)`}
+                        {found ? found.name : `${b} (invalid — click Reset)`}
                       </p>
                     );
                   })}
@@ -615,7 +632,8 @@ export default function Profile() {
               )}
               <div className="flex items-center gap-3">
                 <input
-                  type="checkbox" id="any"
+                  type="checkbox"
+                  id="any"
                   checked={branches.any_branch}
                   onChange={(e) =>
                     setBranches({ ...branches, any_branch: e.target.checked })
@@ -629,11 +647,13 @@ export default function Profile() {
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                 <div className="flex items-start gap-3">
                   <input
-                    type="checkbox" id="strict"
+                    type="checkbox"
+                    id="strict"
                     checked={branches.strict_filter}
                     onChange={(e) =>
                       setBranches({
-                        ...branches, strict_filter: e.target.checked,
+                        ...branches,
+                        strict_filter: e.target.checked,
                       })
                     }
                     className="w-4 h-4 accent-blue-900 mt-0.5"
@@ -662,7 +682,8 @@ export default function Profile() {
               <div className="flex flex-col gap-2">
                 {REGIONS.map((region) => (
                   <button
-                    key={region} type="button"
+                    key={region}
+                    type="button"
                     onClick={() =>
                       setLocation({ ...location, preferred_region: region })
                     }
@@ -692,7 +713,8 @@ export default function Profile() {
                 <div className="flex gap-2">
                   {["Safe", "Moderate", "Ambitious"].map((r) => (
                     <button
-                      key={r} type="button"
+                      key={r}
+                      type="button"
                       onClick={() =>
                         setConstraints({ ...constraints, risk_appetite: r })
                       }
@@ -714,7 +736,8 @@ export default function Profile() {
                 <div className="flex gap-2">
                   {["Industry", "Research", "Undecided"].map((g) => (
                     <button
-                      key={g} type="button"
+                      key={g}
+                      type="button"
                       onClick={() =>
                         setConstraints({ ...constraints, mtech_goal: g })
                       }
@@ -738,7 +761,8 @@ export default function Profile() {
                   value={constraints.fee_budget}
                   onChange={(e) =>
                     setConstraints({
-                      ...constraints, fee_budget: e.target.value,
+                      ...constraints,
+                      fee_budget: e.target.value,
                     })
                   }
                   className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400"
@@ -754,22 +778,27 @@ export default function Profile() {
                   value={constraints.btec_cgpa}
                   onChange={(e) =>
                     setConstraints({
-                      ...constraints, btec_cgpa: e.target.value,
+                      ...constraints,
+                      btec_cgpa: e.target.value,
                     })
                   }
                   placeholder="e.g. 7.8"
-                  step="0.1" min="0" max="10"
+                  step="0.1"
+                  min="0"
+                  max="10"
                   className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400"
                 />
               </div>
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-3">
                   <input
-                    type="checkbox" id="hostel"
+                    type="checkbox"
+                    id="hostel"
                     checked={constraints.hostel_needed}
                     onChange={(e) =>
                       setConstraints({
-                        ...constraints, hostel_needed: e.target.checked,
+                        ...constraints,
+                        hostel_needed: e.target.checked,
                       })
                     }
                     className="w-4 h-4 accent-blue-900"
@@ -780,11 +809,13 @@ export default function Profile() {
                 </div>
                 <div className="flex items-center gap-3">
                   <input
-                    type="checkbox" id="backlogs"
+                    type="checkbox"
+                    id="backlogs"
                     checked={constraints.has_backlogs}
                     onChange={(e) =>
                       setConstraints({
-                        ...constraints, has_backlogs: e.target.checked,
+                        ...constraints,
+                        has_backlogs: e.target.checked,
                       })
                     }
                     className="w-4 h-4 accent-blue-900"
@@ -820,8 +851,11 @@ export default function Profile() {
                   className="flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl p-5 cursor-pointer hover:border-blue-300 transition-all bg-gray-50"
                 >
                   <input
-                    type="file" id="cv-upload" accept=".pdf"
-                    onChange={handleCVUpload} className="hidden"
+                    type="file"
+                    id="cv-upload"
+                    accept=".pdf"
+                    onChange={handleCVUpload}
+                    className="hidden"
                   />
                   {cvUploading ? (
                     <div className="flex items-center gap-2 text-blue-700">
@@ -834,8 +868,8 @@ export default function Profile() {
                         Click to upload CV (PDF, max 5MB)
                       </p>
                       <p className="text-xs text-gray-400 mt-1">
-                        Only B.Tech branch and CGPA are read.
-                        Your CV file is not stored.
+                        Only B.Tech branch and CGPA are read. Your CV file is
+                        not stored.
                       </p>
                     </>
                   )}
@@ -847,6 +881,11 @@ export default function Profile() {
                     <p className="text-xs text-blue-700 font-medium">
                       ✓ Extracted from CV — please verify and confirm below
                     </p>
+                    {cvCgpaNote && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        ⚠️ {cvCgpaNote}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -875,7 +914,9 @@ export default function Profile() {
                     className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-blue-400"
                   >
                     <option value="">Select your branch</option>
-                    <option value="CS_IT">CS / IT / Software Engineering</option>
+                    <option value="CS_IT">
+                      CS / IT / Software Engineering
+                    </option>
                     <option value="ECE_EE">ECE / EE / Electronics</option>
                     <option value="MECHANICAL">Mechanical / Production</option>
                     <option value="CIVIL">Civil / Environmental</option>
@@ -896,7 +937,9 @@ export default function Profile() {
                       setCvSaved(false);
                     }}
                     placeholder="e.g. 8.5"
-                    step="0.1" min="0" max="10"
+                    step="0.1"
+                    min="0"
+                    max="10"
                     className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400"
                   />
                 </div>
@@ -905,7 +948,8 @@ export default function Profile() {
                 {manualBranch && (
                   <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
                     <input
-                      type="checkbox" id="cv-confirm"
+                      type="checkbox"
+                      id="cv-confirm"
                       checked={cvConfirmed}
                       onChange={(e) => {
                         setCvConfirmed(e.target.checked);
@@ -913,9 +957,12 @@ export default function Profile() {
                       }}
                       className="w-4 h-4 accent-blue-900 mt-0.5"
                     />
-                    <label htmlFor="cv-confirm" className="text-xs text-gray-700">
-                      I confirm this is my own academic information
-                      and it is accurate to the best of my knowledge.
+                    <label
+                      htmlFor="cv-confirm"
+                      className="text-xs text-gray-700"
+                    >
+                      I confirm this is my own academic information and it is
+                      accurate to the best of my knowledge.
                     </label>
                   </div>
                 )}
@@ -941,9 +988,11 @@ export default function Profile() {
                         useInRecommendations ? "bg-blue-900" : "bg-gray-300"
                       }`}
                     >
-                      <span className={`w-4 h-4 bg-white rounded-full absolute transition-all shadow ${
-                        useInRecommendations ? "left-6" : "left-1"
-                      }`} />
+                      <span
+                        className={`w-4 h-4 bg-white rounded-full absolute transition-all shadow ${
+                          useInRecommendations ? "left-6" : "left-1"
+                        }`}
+                      />
                     </button>
                   </div>
                 )}
@@ -962,8 +1011,7 @@ export default function Profile() {
                 {cvSaved && (
                   <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-2.5">
                     <p className="text-xs text-green-700 font-medium">
-                      ✓ Saved —{" "}
-                      {manualBranch} ·{" "}
+                      ✓ Saved — {manualBranch} ·{" "}
                       {manualCGPA ? `CGPA ${manualCGPA} · ` : ""}
                       {useInRecommendations
                         ? "Included in recommendations"
@@ -972,9 +1020,7 @@ export default function Profile() {
                   </div>
                 )}
 
-                {cvError && (
-                  <p className="text-red-500 text-sm">{cvError}</p>
-                )}
+                {cvError && <p className="text-red-500 text-sm">{cvError}</p>}
               </div>
 
               {/* How it works */}
@@ -986,9 +1032,9 @@ export default function Profile() {
                 <p>ECE/EE background → neutral</p>
                 <p>CGPA ≥ 8.5 → +2 pts · CGPA &lt; 7.0 → −2 pts</p>
                 <p className="mt-1 text-gray-400">
-                  The 5-factor system (probability, NIRF, sentiment,
-                  location, branch priority) is completely unchanged.
-                  This is a small optional add-on shown separately.
+                  The 5-factor system (probability, NIRF, sentiment, location,
+                  branch priority) is completely unchanged. This is a small
+                  optional add-on shown separately.
                 </p>
               </div>
 
@@ -1030,8 +1076,10 @@ export default function Profile() {
               {loading
                 ? "Saving..."
                 : step === STEPS.length - 1
-                ? isEditing ? "Save Changes" : "Go to Dashboard"
-                : "Next"}
+                  ? isEditing
+                    ? "Save Changes"
+                    : "Go to Dashboard"
+                  : "Next"}
             </button>
           </div>
         </div>

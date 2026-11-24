@@ -182,29 +182,156 @@ def detect_branch(text: str):
 # ── CGPA detection ────────────────────────────────────────
 
 def detect_cgpa(text: str):
-    patterns = [
-        (r'cgpa[\s:]*([0-9]\.[0-9]{1,2})\s*/\s*10',  "high"),
-        (r'gpa[\s:]*([0-9]\.[0-9]{1,2})\s*/\s*10',   "high"),
-        (r'([0-9]\.[0-9]{1,2})\s*/\s*10[\s\.,]',      "high"),
-        (r'cgpa[\s:]+([0-9]\.[0-9]{1,2})',             "high"),
-        (r'c\.g\.p\.a[\s:]+([0-9]\.[0-9]{1,2})',       "high"),
-        (r'gpa[\s:]+([0-9]\.[0-9]{1,2})',              "medium"),
-        (r'cumulative[\s\w]*gpa[\s:]*([0-9]\.[0-9]{1,2})', "medium"),
-        (r'([0-9]{2}\.[0-9]{1,2})\s*%',                "medium"),
-        (r'percentage[\s:]+([0-9]{2}\.[0-9]{1,2})',    "medium"),
+    """
+    Detect B.Tech CGPA from CV text.
+    Uses context-aware matching — looks for CGPA values
+    that appear near B.Tech/UG degree keywords.
+    Falls back to highest CGPA if context matching fails,
+    since B.Tech CGPA is typically higher than M.Tech CGPA
+    for students who improved during undergrad.
+
+    Returns (cgpa_float, confidence).
+    """
+    if not text:
+        return None, "low"
+
+    # ── Strategy 1: Context-aware search ─────────────────
+    # Look for CGPA near B.Tech / undergraduate keywords
+    # Split text into sections around degree mentions
+
+    btech_context_keywords = [
+        "b.tech", "b.e.", "bachelor", "undergraduate",
+        "ug", "b tech", "be ", "b.e ", "btech",
+        "bachelor of technology", "bachelor of engineering",
     ]
 
-    for pattern, confidence in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
+    mtech_context_keywords = [
+        "m.tech", "m.e.", "master", "postgraduate",
+        "pg", "m tech", "me ", "m.e ", "mtech",
+        "master of technology", "master of engineering",
+        "ph.d", "phd", "doctorate",
+    ]
+
+    # Split text into lines for context analysis
+    lines = text.split('\n')
+
+    # Find line indices where B.Tech and M.Tech are mentioned
+    btech_lines = []
+    mtech_lines = []
+    for i, line in enumerate(lines):
+        line_lower = line.lower()
+        if any(kw in line_lower for kw in btech_context_keywords):
+            btech_lines.append(i)
+        if any(kw in line_lower for kw in mtech_context_keywords):
+            mtech_lines.append(i)
+
+    # CGPA patterns to search within context windows
+    cgpa_patterns = [
+        r'cgpa[\s:]*([0-9]\.[0-9]{1,2})\s*/\s*10',
+        r'gpa[\s:]*([0-9]\.[0-9]{1,2})\s*/\s*10',
+        r'([0-9]\.[0-9]{1,2})\s*/\s*10[\s\.,\)]',
+        r'cgpa[\s:]+([0-9]\.[0-9]{1,2})',
+        r'c\.g\.p\.a[\s:]+([0-9]\.[0-9]{1,2})',
+        r'gpa[\s:]+([0-9]\.[0-9]{1,2})',
+        r'cumulative[\s\w]*gpa[\s:]*([0-9]\.[0-9]{1,2})',
+    ]
+
+    percentage_patterns = [
+        r'([0-9]{2}\.[0-9]{1,2})\s*%',
+        r'percentage[\s:]+([0-9]{2}\.[0-9]{1,2})',
+        r'([0-9]{2}\.[0-9]{1,2})\s*percent',
+    ]
+
+    def extract_cgpa_from_text_segment(segment: str):
+        """Extract CGPA value from a text segment."""
+        for pattern in cgpa_patterns:
+            match = re.search(pattern, segment, re.IGNORECASE)
+            if match:
+                try:
+                    val = float(match.group(1))
+                    if 0 < val <= 10:
+                        return val, "high"
+                except ValueError:
+                    continue
+        for pattern in percentage_patterns:
+            match = re.search(pattern, segment, re.IGNORECASE)
+            if match:
+                try:
+                    val = float(match.group(1))
+                    if val > 10:
+                        val = round(val / 10.0, 2)
+                    if 0 < val <= 10:
+                        return val, "medium"
+                except ValueError:
+                    continue
+        return None, "low"
+
+    # If we found B.Tech line references, search nearby lines
+    if btech_lines:
+        for btech_line_idx in btech_lines:
+            # Search in a window of ±5 lines around B.Tech mention
+            window_start = max(0, btech_line_idx - 2)
+            window_end   = min(len(lines), btech_line_idx + 6)
+            window_text  = '\n'.join(lines[window_start:window_end])
+
+            # Skip if this window also mentions M.Tech
+            # (avoid picking up M.Tech CGPA from same row)
+            window_has_mtech = any(
+                kw in window_text.lower()
+                for kw in mtech_context_keywords
+            )
+
+            cgpa, conf = extract_cgpa_from_text_segment(window_text)
+            if cgpa and not window_has_mtech:
+                return cgpa, conf
+
+        # If B.Tech window also had M.Tech mention,
+        # try a wider search excluding M.Tech sections
+        for btech_line_idx in btech_lines:
+            window_start = max(0, btech_line_idx - 2)
+            window_end   = min(len(lines), btech_line_idx + 6)
+            window_text  = '\n'.join(lines[window_start:window_end])
+            cgpa, conf = extract_cgpa_from_text_segment(window_text)
+            if cgpa:
+                return cgpa, "medium"
+
+    # ── Strategy 2: Take the highest CGPA in the document ─
+    # Rationale: B.Tech students typically improve from UG
+    # to PG, so B.Tech CGPA is often the higher value.
+    # M.Tech CGPA tends to be lower (harder curriculum).
+    # This is a heuristic — not always true.
+
+    all_cgpas = []
+    for pattern in cgpa_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            try:
+                val = float(match.group(1))
+                if 0 < val <= 10:
+                    all_cgpas.append(val)
+            except ValueError:
+                continue
+
+    for pattern in percentage_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
             try:
                 val = float(match.group(1))
                 if val > 10:
                     val = round(val / 10.0, 2)
                 if 0 < val <= 10:
-                    return val, confidence
+                    all_cgpas.append(val)
             except ValueError:
                 continue
+
+    if all_cgpas:
+        # Remove duplicates and sort
+        unique_cgpas = sorted(set(all_cgpas), reverse=True)
+
+        if len(unique_cgpas) == 1:
+            return unique_cgpas[0], "high"
+
+        # Multiple CGPAs found — return highest
+        # and flag as medium confidence
+        return unique_cgpas[0], "medium"
 
     return None, "low"
 
@@ -227,6 +354,7 @@ def extract_cv_fields(pdf_bytes: bytes) -> dict:
         "raw_text_length":    0,
         "needs_confirmation": True,
         "error":              None,
+        "cgpa_note":          None,
     }
 
     if not PDFPLUMBER_AVAILABLE:
@@ -258,6 +386,12 @@ def extract_cv_fields(pdf_bytes: bytes) -> dict:
         result["cgpa_confidence"]    = cgpa_conf
         result["extraction_success"] = True
         result["needs_confirmation"] = True
+
+        if cgpa_conf == "medium":
+            result["cgpa_note"] = (
+                "Multiple CGPAs found in CV. "
+                "Please verify this is your B.Tech CGPA."
+            )
 
     except Exception as e:
         result["error"] = f"Extraction failed: {str(e)}"
