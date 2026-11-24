@@ -200,21 +200,31 @@ export default function Profile() {
     setCvExtracted(false);
     setCvConfirmed(false);
     setCvSaved(false);
+    setCvCgpaNote("");
     try {
       const res = await uploadCV(token, file);
       if (res.data.extraction_success) {
         setManualBranch(res.data.btech_branch || "");
         setManualCGPA(res.data.btech_cgpa ? String(res.data.btech_cgpa) : "");
-        setCvExtracted(true);
+        setCvExtracted(true); // true = PDF extracted
         setCvCgpaNote(res.data.cgpa_note || "");
       } else {
         setCvError(
           res.data.error ||
-            "Could not extract automatically. Please fill in manually.",
+            res.data.message ||
+            "Could not extract. Please fill in manually.",
         );
+        setCvExtracted("manual"); // show manual fields
       }
     } catch (err) {
-      setCvError("Upload failed. Check the file is a valid PDF and try again.");
+      const detail = err.response?.data?.detail;
+      const status = err.response?.status;
+      setCvError(
+        detail
+          ? `Error ${status}: ${detail}`
+          : "Upload failed. Please fill in manually.",
+      );
+      setCvExtracted("manual"); // show manual fields on error
     } finally {
       setCvUploading(false);
     }
@@ -829,8 +839,10 @@ export default function Profile() {
           )}
 
           {/* ── Step 5: Academic Background (CV) ── */}
+          {/* ── Step 5: Academic Background (CV) ── */}
           {step === 5 && (
             <div className="flex flex-col gap-5">
+              {/* Header */}
               <div>
                 <h2 className="font-semibold text-gray-800 mb-1">
                   Academic Background
@@ -841,214 +853,346 @@ export default function Profile() {
                 </p>
               </div>
 
-              {/* CV Upload area */}
-              <div>
-                <p className="text-xs font-medium text-gray-600 mb-2">
-                  Upload your CV (PDF) to auto-detect branch and CGPA:
-                </p>
-                <label
-                  htmlFor="cv-upload"
-                  className="flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl p-5 cursor-pointer hover:border-blue-300 transition-all bg-gray-50"
-                >
-                  <input
-                    type="file"
-                    id="cv-upload"
-                    accept=".pdf"
-                    onChange={handleCVUpload}
-                    className="hidden"
-                  />
-                  {cvUploading ? (
-                    <div className="flex items-center gap-2 text-blue-700">
-                      <div className="w-4 h-4 border-2 border-blue-700 border-t-transparent rounded-full animate-spin" />
-                      <span className="text-sm">Extracting from CV...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="text-sm font-medium text-blue-700">
-                        Click to upload CV (PDF, max 5MB)
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Only B.Tech branch and CGPA are read. Your CV file is
-                        not stored.
-                      </p>
-                    </>
-                  )}
-                </label>
-
-                {/* Extraction result banner */}
-                {cvExtracted && (
-                  <div className="mt-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
-                    <p className="text-xs text-blue-700 font-medium">
-                      ✓ Extracted from CV — please verify and confirm below
+              {/* ── BEFORE UPLOAD: Show only upload area ── */}
+              {!cvExtracted && (
+                <>
+                  <div>
+                    <p className="text-xs font-medium text-gray-600 mb-2">
+                      Upload your CV (PDF) to auto-detect branch and CGPA:
                     </p>
-                    {cvCgpaNote && (
-                      <p className="text-xs text-amber-600 mt-1">
-                        ⚠️ {cvCgpaNote}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Divider */}
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-gray-100" />
-                <span className="text-xs text-gray-400">
-                  {cvExtracted ? "verify or edit" : "fill manually"}
-                </span>
-                <div className="flex-1 h-px bg-gray-100" />
-              </div>
-
-              {/* Manual / editable fields */}
-              <div className="flex flex-col gap-3">
-                <div>
-                  <label className="text-sm font-medium text-gray-700 mb-1 block">
-                    B.Tech Branch
-                  </label>
-                  <select
-                    value={manualBranch}
-                    onChange={(e) => {
-                      setManualBranch(e.target.value);
-                      setCvSaved(false);
-                    }}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-blue-400"
-                  >
-                    <option value="">Select your branch</option>
-                    <option value="CS_IT">
-                      CS / IT / Software Engineering
-                    </option>
-                    <option value="ECE_EE">ECE / EE / Electronics</option>
-                    <option value="MECHANICAL">Mechanical / Production</option>
-                    <option value="CIVIL">Civil / Environmental</option>
-                    <option value="CHEMICAL">Chemical Engineering</option>
-                    <option value="OTHER">Other</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-gray-700 mb-1 block">
-                    B.Tech CGPA
-                  </label>
-                  <input
-                    type="number"
-                    value={manualCGPA}
-                    onChange={(e) => {
-                      setManualCGPA(e.target.value);
-                      setCvSaved(false);
-                    }}
-                    placeholder="e.g. 8.5"
-                    step="0.1"
-                    min="0"
-                    max="10"
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400"
-                  />
-                </div>
-
-                {/* Confirmation checkbox — shown when branch is selected */}
-                {manualBranch && (
-                  <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                    <input
-                      type="checkbox"
-                      id="cv-confirm"
-                      checked={cvConfirmed}
-                      onChange={(e) => {
-                        setCvConfirmed(e.target.checked);
-                        setCvSaved(false);
-                      }}
-                      className="w-4 h-4 accent-blue-900 mt-0.5"
-                    />
                     <label
-                      htmlFor="cv-confirm"
-                      className="text-xs text-gray-700"
+                      htmlFor="cv-upload"
+                      className="flex flex-col items-center justify-center
+                       border-2 border-dashed border-gray-200
+                       rounded-xl p-6 cursor-pointer
+                       hover:border-blue-300 transition-all bg-gray-50"
                     >
-                      I confirm this is my own academic information and it is
-                      accurate to the best of my knowledge.
+                      <input
+                        type="file"
+                        id="cv-upload"
+                        accept=".pdf"
+                        onChange={handleCVUpload}
+                        className="hidden"
+                      />
+                      {cvUploading ? (
+                        <div className="flex items-center gap-2 text-blue-700">
+                          <div
+                            className="w-4 h-4 border-2 border-blue-700
+                                border-t-transparent rounded-full
+                                animate-spin"
+                          />
+                          <span className="text-sm">Extracting from CV...</span>
+                        </div>
+                      ) : (
+                        <>
+                          <div
+                            className="w-10 h-10 bg-blue-50 rounded-full
+                                flex items-center justify-center mb-3"
+                          >
+                            <svg
+                              className="w-5 h-5 text-blue-700"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+                              />
+                            </svg>
+                          </div>
+                          <p className="text-sm font-medium text-blue-700">
+                            Click to upload CV (PDF, max 5MB)
+                          </p>
+                          <p className="text-xs text-gray-400 mt-1 text-center">
+                            Only B.Tech branch and CGPA are read. Your CV file
+                            is not stored.
+                          </p>
+                        </>
+                      )}
                     </label>
                   </div>
-                )}
 
-                {/* Toggle — shown when confirmed */}
-                {cvConfirmed && (
-                  <div className="flex items-center justify-between bg-blue-50 rounded-xl px-4 py-3">
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">
-                        Include in recommendations
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        Adds small bonus. Core 5-factor system unchanged.
-                      </p>
+                  {/* Error from upload attempt */}
+                  {cvError && (
+                    <div
+                      className="bg-red-50 border border-red-200
+                          rounded-xl px-4 py-3"
+                    >
+                      <p className="text-sm text-red-600">{cvError}</p>
                     </div>
+                  )}
+
+                  {/* Manual entry as secondary fallback */}
+                  <div>
                     <button
                       type="button"
-                      onClick={() => {
-                        setUseInRecommendations((p) => !p);
-                        setCvSaved(false);
-                      }}
-                      className={`w-11 h-6 rounded-full transition-all relative flex items-center ${
-                        useInRecommendations ? "bg-blue-900" : "bg-gray-300"
-                      }`}
+                      onClick={() => setCvExtracted("manual")}
+                      className="text-xs text-gray-400 hover:text-blue-600
+                       underline text-center w-full"
                     >
-                      <span
-                        className={`w-4 h-4 bg-white rounded-full absolute transition-all shadow ${
-                          useInRecommendations ? "left-6" : "left-1"
-                        }`}
-                      />
+                      Skip upload — fill in manually instead
                     </button>
                   </div>
-                )}
+                </>
+              )}
 
-                {/* Save button */}
-                <button
-                  type="button"
-                  onClick={handleSaveCV}
-                  disabled={!manualBranch || !cvConfirmed}
-                  className="w-full py-2.5 rounded-xl bg-blue-900 text-white text-sm font-medium disabled:opacity-40 hover:bg-blue-800 transition-all"
-                >
-                  Save background details
-                </button>
+              {/* ── AFTER UPLOAD or MANUAL: Show extracted/editable fields ── */}
+              {cvExtracted && (
+                <>
+                  {/* Success banner */}
+                  {cvExtracted === true && (
+                    <div
+                      className="bg-green-50 border border-green-200
+                          rounded-xl px-4 py-3"
+                    >
+                      <p className="text-xs text-green-700 font-medium mb-0.5">
+                        ✓ Extracted from CV — please verify and confirm below
+                      </p>
+                      {cvCgpaNote && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          ⚠️ {cvCgpaNote}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
-                {/* Saved confirmation */}
-                {cvSaved && (
-                  <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-2.5">
-                    <p className="text-xs text-green-700 font-medium">
-                      ✓ Saved — {manualBranch} ·{" "}
-                      {manualCGPA ? `CGPA ${manualCGPA} · ` : ""}
-                      {useInRecommendations
-                        ? "Included in recommendations"
-                        : "Not included in recommendations"}
+                  {/* Manual mode banner */}
+                  {cvExtracted === "manual" && (
+                    <div
+                      className="bg-blue-50 border border-blue-200
+                          rounded-xl px-4 py-3 flex items-center
+                          justify-between"
+                    >
+                      <p className="text-xs text-blue-700 font-medium">
+                        Fill in your academic background manually
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCvExtracted(false);
+                          setManualBranch("");
+                          setManualCGPA("");
+                          setCvConfirmed(false);
+                          setCvSaved(false);
+                          setCvError("");
+                        }}
+                        className="text-xs text-blue-600 underline ml-3
+                         whitespace-nowrap"
+                      >
+                        Upload CV instead
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Editable fields */}
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <label
+                        className="text-sm font-medium text-gray-700
+                              mb-1 block"
+                      >
+                        B.Tech Branch
+                      </label>
+                      <select
+                        value={manualBranch}
+                        onChange={(e) => {
+                          setManualBranch(e.target.value);
+                          setCvSaved(false);
+                          setCvConfirmed(false);
+                        }}
+                        className="w-full border border-gray-200 rounded-xl
+                         px-4 py-2.5 text-sm bg-white
+                         focus:outline-none focus:border-blue-400"
+                      >
+                        <option value="">Select your branch</option>
+                        <option value="CS_IT">
+                          CS / IT / Software Engineering
+                        </option>
+                        <option value="ECE_EE">ECE / EE / Electronics</option>
+                        <option value="MECHANICAL">
+                          Mechanical / Production
+                        </option>
+                        <option value="CIVIL">Civil / Environmental</option>
+                        <option value="CHEMICAL">Chemical Engineering</option>
+                        <option value="OTHER">Other</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        className="text-sm font-medium text-gray-700
+                              mb-1 block"
+                      >
+                        B.Tech CGPA
+                      </label>
+                      <input
+                        type="number"
+                        value={manualCGPA}
+                        onChange={(e) => {
+                          setManualCGPA(e.target.value);
+                          setCvSaved(false);
+                          setCvConfirmed(false);
+                        }}
+                        placeholder="e.g. 8.5"
+                        step="0.1"
+                        min="0"
+                        max="10"
+                        className="w-full border border-gray-200 rounded-xl
+                         px-4 py-2.5 text-sm
+                         focus:outline-none focus:border-blue-400"
+                      />
+                    </div>
+
+                    {/* Confirmation checkbox */}
+                    {manualBranch && (
+                      <div
+                        className="flex items-start gap-3 bg-amber-50
+                            border border-amber-200 rounded-xl p-3"
+                      >
+                        <input
+                          type="checkbox"
+                          id="cv-confirm"
+                          checked={cvConfirmed}
+                          onChange={(e) => {
+                            setCvConfirmed(e.target.checked);
+                            setCvSaved(false);
+                          }}
+                          className="w-4 h-4 accent-blue-900 mt-0.5"
+                        />
+                        <label
+                          htmlFor="cv-confirm"
+                          className="text-xs text-gray-700"
+                        >
+                          I confirm this is my own academic information and it
+                          is accurate to the best of my knowledge.
+                        </label>
+                      </div>
+                    )}
+
+                    {/* Include in recommendations toggle */}
+                    {cvConfirmed && (
+                      <div
+                        className="flex items-center justify-between
+                            bg-blue-50 rounded-xl px-4 py-3"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">
+                            Include in recommendations
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Adds small bonus. Core 5-factor system unchanged.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUseInRecommendations((p) => !p);
+                            setCvSaved(false);
+                          }}
+                          className={`w-11 h-6 rounded-full transition-all
+                            relative flex-shrink-0 ${
+                              useInRecommendations
+                                ? "bg-blue-900"
+                                : "bg-gray-300"
+                            }`}
+                        >
+                          <span
+                            className={`w-4 h-4 bg-white rounded-full
+                                  absolute transition-all shadow ${
+                                    useInRecommendations ? "left-6" : "left-1"
+                                  }`}
+                          />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Save button */}
+                    <button
+                      type="button"
+                      onClick={handleSaveCV}
+                      disabled={!manualBranch || !cvConfirmed}
+                      className="w-full py-2.5 rounded-xl bg-blue-900
+                       text-white text-sm font-medium
+                       disabled:opacity-40 hover:bg-blue-800
+                       transition-all"
+                    >
+                      Save background details
+                    </button>
+
+                    {/* Saved confirmation */}
+                    {cvSaved && (
+                      <div
+                        className="bg-green-50 border border-green-200
+                            rounded-xl px-4 py-2.5"
+                      >
+                        <p className="text-xs text-green-700 font-medium">
+                          ✓ Saved — {manualBranch} ·{" "}
+                          {manualCGPA ? `CGPA ${manualCGPA} · ` : ""}
+                          {useInRecommendations
+                            ? "Included in recommendations"
+                            : "Not included in recommendations"}
+                        </p>
+                      </div>
+                    )}
+
+                    {cvError && (
+                      <p className="text-red-500 text-sm">{cvError}</p>
+                    )}
+
+                    {/* Re-upload option after extraction */}
+                    {cvExtracted === true && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCvExtracted(false);
+                          setManualBranch("");
+                          setManualCGPA("");
+                          setCvConfirmed(false);
+                          setCvSaved(false);
+                          setCvError("");
+                          setCvCgpaNote("");
+                        }}
+                        className="text-xs text-gray-400 hover:text-gray-600
+                         underline text-center"
+                      >
+                        Upload a different CV
+                      </button>
+                    )}
+                  </div>
+
+                  {/* How it works */}
+                  <div
+                    className="bg-gray-50 rounded-xl p-3 text-xs
+                        text-gray-500"
+                  >
+                    <p className="font-medium text-gray-700 mb-1">
+                      How this bonus works:
+                    </p>
+                    <p>CS/IT background + CSE/AI/DS programme → +3 pts</p>
+                    <p>ECE/EE background → neutral</p>
+                    <p>CGPA ≥ 8.5 → +2 pts · CGPA &lt; 7.0 → −2 pts</p>
+                    <p className="mt-1 text-gray-400">
+                      The 5-factor system is completely unchanged. This is a
+                      small optional add-on.
                     </p>
                   </div>
-                )}
-
-                {cvError && <p className="text-red-500 text-sm">{cvError}</p>}
-              </div>
-
-              {/* How it works */}
-              <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-500">
-                <p className="font-medium text-gray-700 mb-1">
-                  How this bonus works:
-                </p>
-                <p>CS/IT background + CSE/AI/DS programme → +3 pts</p>
-                <p>ECE/EE background → neutral</p>
-                <p>CGPA ≥ 8.5 → +2 pts · CGPA &lt; 7.0 → −2 pts</p>
-                <p className="mt-1 text-gray-400">
-                  The 5-factor system (probability, NIRF, sentiment, location,
-                  branch priority) is completely unchanged. This is a small
-                  optional add-on shown separately.
-                </p>
-              </div>
+                </>
+              )}
 
               {/* Skip */}
               <button
                 type="button"
                 onClick={() => navigate("/dashboard")}
-                className="text-xs text-gray-400 hover:text-gray-600 text-center"
+                className="text-xs text-gray-400 hover:text-gray-600
+                 text-center"
               >
                 Skip — go to dashboard without saving
               </button>
             </div>
           )}
-
           {/* Error */}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 text-red-600 text-sm mt-4">
