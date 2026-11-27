@@ -289,7 +289,7 @@ async def confirm_cv(
 
     valid_branches = [
         "CS_IT", "ECE_EE", "MECHANICAL",
-        "CIVIL", "CHEMICAL", "OTHER"
+        "CIVIL", "CHEMICAL", "BIOTECHNOLOGY", "OTHER"
     ]
     if btech_branch not in valid_branches:
         raise HTTPException(

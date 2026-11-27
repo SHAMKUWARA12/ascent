@@ -1,23 +1,11 @@
 """
 ASCENT — CV Extractor
 
-Extracts B.Tech branch and CGPA from student CV PDF.
+Extracts B.Tech branch and CGPA/CPI from student CV PDFs.
 Used as an OPTIONAL BONUS on top of the core 5-factor
-recommendation engine. Does not replace any existing factor.
+recommendation engine.
 
-The student must:
-1. Upload their PDF CV
-2. Confirm the extracted data is correct
-3. Choose whether to include it in recommendations
-
-Validation:
-- CGPA must be between 0 and 10
-- Branch must be a recognised engineering discipline
-- Student explicitly confirms the data before it is saved
-
-Note: We cannot verify the document is the student's own.
-We rely on student confirmation (standard practice for
-all academic platforms like LinkedIn, Naukri, etc.)
+Student must confirm extracted information before saving.
 """
 
 import re
@@ -25,7 +13,8 @@ import io
 import os
 import sys
 
-sys.path.insert(0,
+sys.path.insert(
+    0,
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
 
@@ -33,6 +22,7 @@ try:
     import pdfplumber
     PDFPLUMBER_AVAILABLE = True
 except ImportError:
+    pdfplumber = None
     PDFPLUMBER_AVAILABLE = False
 
 
@@ -40,74 +30,255 @@ except ImportError:
 
 BRANCH_KEYWORDS = {
     "CS_IT": [
-        "computer science", "computer engineering",
-        "information technology", "software engineering",
-        "b.tech cse", "b.tech cs", "b.e. cse", "b.e. cs",
-        "b.tech it", "b.e. it", "computing", "cse", " it ",
-        "data science", "artificial intelligence",
+        "computer science",
+        "computer engineering",
+        "information technology",
+        "software engineering",
+        "b.tech cse",
+        "b.tech cs",
+        "b.e. cse",
+        "b.e. cs",
+        "b.tech it",
+        "b.e. it",
+        "computing",
+        "cse",
+        "data science",
+        "artificial intelligence",
         "information science",
+        "machine learning",
+        "cyber security",
+        "cybersecurity",
+        "computer applications",
+        # Added
+        "computational mathematics",
+        "mathematics and computing",
+        "mathematics & computing",
+        "data engineering",
+        "information engineering",
+        "software systems",
+        "it engineering",
     ],
+
     "ECE_EE": [
-        "electronics", "communication engineering",
-        "electrical engineering", "ece", " ee ",
         "electronics and communication",
+        "electronics and telecommunication",
         "electronics & communication",
-        "electrical and electronics", "vlsi",
-        "embedded systems", "b.tech ece", "b.e. ece",
-        "b.tech ee", "telecommunication",
+        "electrical and electronics",
+        "electrical engineering",
+        "electronics engineering",
+        "electronics and instrumentation",
+        "instrumentation and control",
+        "telecommunication engineering",
+        "vlsi",
+        "embedded systems",
+        "b.tech ece",
+        "b.e. ece",
+        "b.tech ee",
+        "ece",
+        # Added
+        "communication engineering",
+        "power engineering",
+        "power systems",
+        "control engineering",
+        "signal processing",
     ],
+
     "MECHANICAL": [
-        "mechanical engineering", "mechanical",
-        "b.tech me", "b.e. me", "production engineering",
-        "manufacturing", "thermal engineering",
-        "automobile", "robotics", "mechatronics",
+        "mechanical engineering",
+        "automobile engineering",
+        "automotive engineering",
+        "production engineering",
+        "manufacturing engineering",
+        "thermal engineering",
+        "robotics",
+        "mechatronics",
         "industrial engineering",
+        "aerospace engineering",
+        "aeronautical engineering",
+        # Added
+        "design engineering",
+        "product design",
+        "tool engineering",
     ],
+
     "CIVIL": [
-        "civil engineering", "civil",
-        "b.tech civil", "b.e. civil", "structural engineering",
-        "geotechnical", "environmental engineering",
-        "construction",
+        "civil engineering",
+        "structural engineering",
+        "geotechnical engineering",
+        "environmental engineering",
+        "construction engineering",
+        "transportation engineering",
+        "water resources engineering",
+        # Added
+        "urban planning",
+        "town planning",
+        "construction management",
     ],
+
     "CHEMICAL": [
-        "chemical engineering", "chemical",
-        "b.tech chemical", "b.e. chemical",
-        "biochemical", "petrochemical",
+        "chemical engineering",
+        "petrochemical engineering",
+        "petroleum engineering",
+        "polymer engineering",
+        "process engineering",
+        # Added
+        "chemical technology",
+        "refinery engineering",
     ],
-    "OTHER": [],
+
+    "BIOTECHNOLOGY": [
+        "biotechnology",
+        "bio technology",
+        "biochemical engineering",
+        "biomedical engineering",
+        "bioengineering",
+        "biological engineering",
+        # Added
+        "bioinformatics",
+        "genetic engineering",
+        "pharmaceutical technology",
+    ],
+
+    "OTHER": [
+        "agricultural engineering",
+        "food technology",
+        "food engineering",
+        "mining engineering",
+        "metallurgical engineering",
+        "materials science",
+        "materials engineering",
+        "nanotechnology",
+        "biomedical science",
+        "biochemistry",
+        "biological sciences",
+        "engineering physics",
+        "instrumentation engineering",
+        "energy engineering",
+        "renewable energy",
+        "textile engineering",
+        "pharmaceutical engineering",
+        "environmental science",
+        "architecture",
+        "physics",
+        "mathematics",
+        "chemistry",
+    ],
 }
+
 
 BRANCH_DISPLAY = {
-    "CS_IT":      "CS / IT / Software Engineering",
-    "ECE_EE":     "ECE / EE / Electronics",
-    "MECHANICAL": "Mechanical / Production",
-    "CIVIL":      "Civil / Environmental",
-    "CHEMICAL":   "Chemical Engineering",
-    "OTHER":      "Other Engineering",
+    "CS_IT":         "CS / IT / Software Engineering",
+    "ECE_EE":        "ECE / EE / Electronics",
+    "MECHANICAL":    "Mechanical / Production",
+    "CIVIL":         "Civil / Environmental",
+    "CHEMICAL":      "Chemical Engineering",
+    "BIOTECHNOLOGY": "Biotechnology / Biomedical",
+    "OTHER":         "Other Engineering / Discipline",
 }
 
-# Score bonus when CV background used (optional add-on only)
-# This does NOT change the 5-factor engine weights
+
+# ── CV scoring bonus ──────────────────────────────────────
+
 CV_BONUS = {
-    # Branch bonus for CSE/DA programme match
     "branch": {
-        "CS_IT":      +3,   # Strong match
-        "ECE_EE":      0,   # Neutral
-        "MECHANICAL": -2,   # Weak match
-        "CIVIL":      -2,   # Weak match
-        "CHEMICAL":   -2,   # Weak match
-        "OTHER":       0,   # Unknown
-        None:          0,   # No CV uploaded
+        "CS_IT":         +3,
+        "ECE_EE":         0,
+        "MECHANICAL":    -2,
+        "CIVIL":         -2,
+        "CHEMICAL":      -2,
+        "BIOTECHNOLOGY":  0,
+        "OTHER":          0,
+        None:             0,
     },
-    # CGPA bonus
     "cgpa": {
-        "high":    +2,   # CGPA >= 8.5
-        "medium":   0,   # CGPA 7.0-8.4
-        "low":     -2,   # CGPA < 7.0
-        None:       0,   # Not provided
+        "high":    +2,
+        "medium":   0,
+        "low":     -2,
+        None:       0,
     }
 }
 
+
+# ── Section markers ───────────────────────────────────────
+
+SECTION_END_MARKERS = [
+    "research experience",
+    "work experience",
+    "professional experience",
+    "internships",
+    "projects",
+    "technical skills",
+    "achievements",
+    "publications",
+    "extracurricular",
+    "responsibilities",
+    "certifications",
+    "references",
+    "referrals",
+    "positions of responsibility",
+    "co-curricular activities",
+]
+
+UG_MARKERS = [
+    "bachelor of technology",
+    "bachelor of engineering",
+    "bachelor of science",
+    "bachelor of computer",
+    "b.tech",
+    "b. tech",
+    "btech",
+    "b.e.",
+    "b.e ",   # space variant
+    "b.e,",   # comma variant
+    "b.sc",
+    "bsc",
+    "bca",
+    "undergraduate",
+    "b.tech.",
+    "be in",
+    "b.e in",
+]
+
+PG_MARKERS = [
+    "master of technology",
+    "master of engineering",
+    "master of science",
+    "m.tech",
+    "m. tech",
+    "mtech",
+    "m.e.",
+    "m.e ",
+    "m.sc",
+    "msc",
+    "postgraduate",
+    "m.tech.",
+    "me in",
+    "m.e in",
+    "ph.d",
+    "phd",
+    "doctorate",
+]
+
+
+def _degree_type(line):
+    line_lower = line.lower()
+    # Check PG first (more specific)
+    if any(marker in line_lower for marker in PG_MARKERS):
+        return "PG"
+    if any(marker in line_lower for marker in UG_MARKERS):
+        return "UG"
+    return None
+
+
+def _is_section_end(line):
+    line = line.strip().lower()
+    return any(
+        line == marker or line.startswith(marker + " ")
+        for marker in SECTION_END_MARKERS
+    )
+
+
+# ── CGPA tier ─────────────────────────────────────────────
 
 def cgpa_tier(cgpa):
     if cgpa is None:
@@ -119,20 +290,24 @@ def cgpa_tier(cgpa):
     return "low"
 
 
+# ── CV bonus calculation ──────────────────────────────────
+
 def get_cv_bonus(student: dict) -> int:
     """
-    Compute CV bonus points.
+    Compute optional CV bonus points.
     Returns 0 if use_cv_in_recommendations is False.
-    Returns 0 if no CV data uploaded.
+    Returns 0 if student has not confirmed CV data.
     This is SEPARATE from the 5-factor score.
+    Max bonus: +5 (CS_IT + CGPA>=8.5)
+    Max penalty: -4 (non-CS + CGPA<7.0)
     """
     if not student.get("use_cv_in_recommendations", True):
         return 0
     if not student.get("cv_confirmed", False):
         return 0
 
-    branch  = student.get("btech_branch")
-    cgpa    = student.get("btech_cgpa")
+    branch = student.get("btech_branch")
+    cgpa   = student.get("btech_cgpa")
 
     branch_bonus = CV_BONUS["branch"].get(branch, 0)
     cgpa_bonus   = CV_BONUS["cgpa"].get(cgpa_tier(cgpa), 0)
@@ -145,205 +320,286 @@ def get_cv_bonus(student: dict) -> int:
 def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     if not PDFPLUMBER_AVAILABLE:
         raise ImportError(
-            "pdfplumber not installed. "
-            "Run: pip install pdfplumber --break-system-packages"
+            "pdfplumber is not installed. "
+            "Run: pip install pdfplumber"
         )
+    if not pdf_bytes:
+        raise ValueError("The uploaded PDF is empty.")
+    if not isinstance(pdf_bytes, bytes):
+        raise TypeError("PDF input must be bytes.")
+    if not pdf_bytes.startswith(b"%PDF-"):
+        raise ValueError("The uploaded file is not a valid PDF.")
+
     text_parts = []
-    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        for page in pdf.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text_parts.append(page_text)
+    try:
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            if not pdf.pages:
+                raise ValueError("The PDF contains no pages.")
+            for page in pdf.pages:
+                try:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text_parts.append(page_text)
+                except Exception:
+                    continue
+    except Exception as e:
+        raise ValueError(f"Could not read PDF: {str(e)}") from e
+
     return "\n".join(text_parts).lower()
+
+
+# ── Branch matching helper ────────────────────────────────
+
+def _find_branch_in_text(text):
+    text = re.sub(r"\s+", " ", text.lower()).strip()
+    matches = []
+
+    for branch, keywords in BRANCH_KEYWORDS.items():
+        if branch == "OTHER":
+            continue
+        for keyword in keywords:
+            keyword = keyword.lower().strip()
+            if not keyword:
+                continue
+            pattern = (
+                r"(?<![a-z0-9])"
+                + re.escape(keyword)
+                + r"(?![a-z0-9])"
+            )
+            if re.search(pattern, text):
+                matches.append((len(keyword), branch))
+
+    if matches:
+        matches.sort(key=lambda item: item[0], reverse=True)
+        return matches[0][1]
+
+    for keyword in BRANCH_KEYWORDS["OTHER"]:
+        pattern = (
+            r"(?<![a-z0-9])"
+            + re.escape(keyword.lower())
+            + r"(?![a-z0-9])"
+        )
+        if re.search(pattern, text):
+            return "OTHER"
+
+    return None
 
 
 # ── Branch detection ──────────────────────────────────────
 
 def detect_branch(text: str):
-    scores = {b: 0 for b in BRANCH_KEYWORDS if b != "OTHER"}
-    for branch, keywords in BRANCH_KEYWORDS.items():
-        if branch == "OTHER":
-            continue
-        for kw in keywords:
-            if kw.lower() in text:
-                scores[branch] += 1
-
-    best  = max(scores, key=lambda b: scores[b])
-    count = scores[best]
-
-    if count >= 2:
-        return best, "high"
-    elif count == 1:
-        return best, "medium"
-    else:
+    if not text:
         return "OTHER", "low"
+
+    lines = text.lower().splitlines()
+    degree_entries = []
+
+    for i, line in enumerate(lines):
+        degree = _degree_type(line)
+        if degree:
+            degree_entries.append((i, degree))
+
+    ug_candidates = []
+    pg_candidates = []
+
+    for position, (start, degree) in enumerate(degree_entries):
+        end = (
+            degree_entries[position + 1][0]
+            if position + 1 < len(degree_entries)
+            else min(start + 8, len(lines))  # wider window
+        )
+
+        section_lines = []
+        for line in lines[start:end]:
+            if _is_section_end(line):
+                break
+            section_lines.append(line)
+
+        # Try first 3 lines (not just 2) for branch name
+        window = " ".join(section_lines[:3])
+        branch = _find_branch_in_text(window)
+
+        # If not found in first 3 lines, try full section
+        if not branch:
+            full_window = " ".join(section_lines)
+            branch = _find_branch_in_text(full_window)
+
+        if branch:
+            if degree == "UG":
+                ug_candidates.append(branch)
+            else:
+                pg_candidates.append(branch)
+
+    if ug_candidates:
+        unique = list(dict.fromkeys(ug_candidates))
+        if len(unique) == 1:
+            return unique[0], "high"
+        return unique[0], "medium"
+
+    if pg_candidates:
+        unique = list(dict.fromkeys(pg_candidates))
+        if len(unique) == 1:
+            return unique[0], "medium"
+        return unique[0], "low"
+
+    # Department line fallback
+    for line in lines:
+        if "department" in line:
+            branch = _find_branch_in_text(line)
+            if branch:
+                return branch, "medium"
+
+    # General keyword scan
+    scores = {
+        branch: 0
+        for branch in BRANCH_KEYWORDS
+        if branch != "OTHER"
+    }
+    for line in lines:
+        branch = _find_branch_in_text(line)
+        if branch in scores:
+            scores[branch] += 1
+
+    if any(scores.values()):
+        best = max(scores, key=scores.get)
+        confidence = "medium" if scores[best] >= 2 else "low"
+        return best, confidence
+
+    for keyword in BRANCH_KEYWORDS["OTHER"]:
+        if keyword in text:
+            return "OTHER", "low"
+
+    return "OTHER", "low"
 
 
 # ── CGPA detection ────────────────────────────────────────
 
+SCORE_PATTERN = re.compile(
+    r"""
+    \b(?:cgpa|cpi|gpa|c\.g\.p\.a\.|c\.p\.i\.)
+    \s*[:=\-]?\s*
+    ([0-9]{1,2}(?:\.[0-9]{1,3})?)
+    (?:\s*/\s*10)?
+    |
+    \b([0-9](?:\.[0-9]{1,3})?)
+    \s*/\s*10\b
+    """,
+    re.IGNORECASE | re.VERBOSE
+)
+
+
+def _extract_academic_scores(block):
+    scores = []
+    for match in SCORE_PATTERN.finditer(block):
+        value_string = match.group(1) or match.group(2)
+        if not value_string:
+            continue
+        try:
+            value = float(value_string)
+        except ValueError:
+            continue
+        if not (0 < value <= 10):
+            continue
+        context = block[
+            max(0, match.start() - 25):
+            min(len(block), match.end() + 25)
+        ]
+        if "%" in context:
+            continue
+        if "percentile" in context:
+            continue
+        if "gate" in context:
+            continue
+        scores.append(round(value, 3))
+    return list(dict.fromkeys(scores))
+
+
 def detect_cgpa(text: str):
-    """
-    Detect B.Tech CGPA from CV text.
-    Uses context-aware matching — looks for CGPA values
-    that appear near B.Tech/UG degree keywords.
-    Falls back to highest CGPA if context matching fails,
-    since B.Tech CGPA is typically higher than M.Tech CGPA
-    for students who improved during undergrad.
-
-    Returns (cgpa_float, confidence).
-    """
     if not text:
-        return None, "low"
+        return None, "low", None
 
-    # ── Strategy 1: Context-aware search ─────────────────
-    # Look for CGPA near B.Tech / undergraduate keywords
-    # Split text into sections around degree mentions
+    lines = text.lower().splitlines()
+    degree_entries = []
 
-    btech_context_keywords = [
-        "b.tech", "b.e.", "bachelor", "undergraduate",
-        "ug", "b tech", "be ", "b.e ", "btech",
-        "bachelor of technology", "bachelor of engineering",
-    ]
-
-    mtech_context_keywords = [
-        "m.tech", "m.e.", "master", "postgraduate",
-        "pg", "m tech", "me ", "m.e ", "mtech",
-        "master of technology", "master of engineering",
-        "ph.d", "phd", "doctorate",
-    ]
-
-    # Split text into lines for context analysis
-    lines = text.split('\n')
-
-    # Find line indices where B.Tech and M.Tech are mentioned
-    btech_lines = []
-    mtech_lines = []
     for i, line in enumerate(lines):
-        line_lower = line.lower()
-        if any(kw in line_lower for kw in btech_context_keywords):
-            btech_lines.append(i)
-        if any(kw in line_lower for kw in mtech_context_keywords):
-            mtech_lines.append(i)
+        degree = _degree_type(line)
+        if degree:
+            degree_entries.append((i, degree))
 
-    # CGPA patterns to search within context windows
-    cgpa_patterns = [
-        r'cgpa[\s:]*([0-9]\.[0-9]{1,2})\s*/\s*10',
-        r'gpa[\s:]*([0-9]\.[0-9]{1,2})\s*/\s*10',
-        r'([0-9]\.[0-9]{1,2})\s*/\s*10[\s\.,\)]',
-        r'cgpa[\s:]+([0-9]\.[0-9]{1,2})',
-        r'c\.g\.p\.a[\s:]+([0-9]\.[0-9]{1,2})',
-        r'gpa[\s:]+([0-9]\.[0-9]{1,2})',
-        r'cumulative[\s\w]*gpa[\s:]*([0-9]\.[0-9]{1,2})',
-    ]
+    ug_scores = []
+    pg_scores = []
 
-    percentage_patterns = [
-        r'([0-9]{2}\.[0-9]{1,2})\s*%',
-        r'percentage[\s:]+([0-9]{2}\.[0-9]{1,2})',
-        r'([0-9]{2}\.[0-9]{1,2})\s*percent',
-    ]
+    for position, (start, degree) in enumerate(degree_entries):
+        end = (
+            degree_entries[position + 1][0]
+            if position + 1 < len(degree_entries)
+            else min(start + 15, len(lines))
+        )
 
-    def extract_cgpa_from_text_segment(segment: str):
-        """Extract CGPA value from a text segment."""
-        for pattern in cgpa_patterns:
-            match = re.search(pattern, segment, re.IGNORECASE)
-            if match:
-                try:
-                    val = float(match.group(1))
-                    if 0 < val <= 10:
-                        return val, "high"
-                except ValueError:
-                    continue
-        for pattern in percentage_patterns:
-            match = re.search(pattern, segment, re.IGNORECASE)
-            if match:
-                try:
-                    val = float(match.group(1))
-                    if val > 10:
-                        val = round(val / 10.0, 2)
-                    if 0 < val <= 10:
-                        return val, "medium"
-                except ValueError:
-                    continue
-        return None, "low"
+        block_lines = []
+        for line in lines[start:end]:
+            if _is_section_end(line):
+                break
+            block_lines.append(line)
 
-    # If we found B.Tech line references, search nearby lines
-    if btech_lines:
-        for btech_line_idx in btech_lines:
-            # Search in a window of ±5 lines around B.Tech mention
-            window_start = max(0, btech_line_idx - 2)
-            window_end   = min(len(lines), btech_line_idx + 6)
-            window_text  = '\n'.join(lines[window_start:window_end])
+        block  = "\n".join(block_lines)
+        scores = _extract_academic_scores(block)
 
-            # Skip if this window also mentions M.Tech
-            # (avoid picking up M.Tech CGPA from same row)
-            window_has_mtech = any(
-                kw in window_text.lower()
-                for kw in mtech_context_keywords
+        if degree == "UG":
+            ug_scores.extend(scores)
+        elif degree == "PG":
+            pg_scores.extend(scores)
+
+    ug_scores = list(dict.fromkeys(ug_scores))
+    pg_scores = list(dict.fromkeys(pg_scores))
+
+    if len(ug_scores) == 1:
+        note = None
+        if pg_scores:
+            note = (
+                f"Found postgraduate CGPA/CPI ({pg_scores[0]}) "
+                f"and undergraduate CGPA/CPI ({ug_scores[0]}). "
+                f"Showing undergraduate score."
             )
+        return ug_scores[0], "high", note
 
-            cgpa, conf = extract_cgpa_from_text_segment(window_text)
-            if cgpa and not window_has_mtech:
-                return cgpa, conf
+    if len(ug_scores) > 1:
+        return (
+            None, "low",
+            "Multiple undergraduate academic scores found. "
+            "Please verify manually."
+        )
 
-        # If B.Tech window also had M.Tech mention,
-        # try a wider search excluding M.Tech sections
-        for btech_line_idx in btech_lines:
-            window_start = max(0, btech_line_idx - 2)
-            window_end   = min(len(lines), btech_line_idx + 6)
-            window_text  = '\n'.join(lines[window_start:window_end])
-            cgpa, conf = extract_cgpa_from_text_segment(window_text)
-            if cgpa:
-                return cgpa, "medium"
+    if pg_scores:
+        return (
+            None, "low",
+            "Postgraduate CGPA/CPI found, but undergraduate "
+            "score could not be identified. Please fill manually."
+        )
 
-    # ── Strategy 2: Take the highest CGPA in the document ─
-    # Rationale: B.Tech students typically improve from UG
-    # to PG, so B.Tech CGPA is often the higher value.
-    # M.Tech CGPA tends to be lower (harder curriculum).
-    # This is a heuristic — not always true.
+    # Fallback
+    all_scores = _extract_academic_scores(text)
 
-    all_cgpas = []
-    for pattern in cgpa_patterns:
-        for match in re.finditer(pattern, text, re.IGNORECASE):
-            try:
-                val = float(match.group(1))
-                if 0 < val <= 10:
-                    all_cgpas.append(val)
-            except ValueError:
-                continue
+    if len(all_scores) == 1:
+        return (
+            all_scores[0], "medium",
+            "Academic score found but degree association "
+            "could not be verified. Please confirm."
+        )
 
-    for pattern in percentage_patterns:
-        for match in re.finditer(pattern, text, re.IGNORECASE):
-            try:
-                val = float(match.group(1))
-                if val > 10:
-                    val = round(val / 10.0, 2)
-                if 0 < val <= 10:
-                    all_cgpas.append(val)
-            except ValueError:
-                continue
+    if len(all_scores) > 1:
+        return (
+            None, "low",
+            "Multiple academic scores found without clear "
+            "degree association. Please verify manually."
+        )
 
-    if all_cgpas:
-        # Remove duplicates and sort
-        unique_cgpas = sorted(set(all_cgpas), reverse=True)
-
-        if len(unique_cgpas) == 1:
-            return unique_cgpas[0], "high"
-
-        # Multiple CGPAs found — return highest
-        # and flag as medium confidence
-        return unique_cgpas[0], "medium"
-
-    return None, "low"
+    return None, "low", None
 
 
 # ── Main extraction ───────────────────────────────────────
 
 def extract_cv_fields(pdf_bytes: bytes) -> dict:
-    """
-    Extract B.Tech branch and CGPA from PDF bytes.
-    Returns a dict with extracted values and metadata.
-    Student must CONFIRM these values before they are saved.
-    """
     result = {
         "btech_branch":       None,
         "btech_cgpa":         None,
@@ -353,14 +609,13 @@ def extract_cv_fields(pdf_bytes: bytes) -> dict:
         "extraction_success": False,
         "raw_text_length":    0,
         "needs_confirmation": True,
-        "error":              None,
         "cgpa_note":          None,
+        "error":              None,
     }
 
     if not PDFPLUMBER_AVAILABLE:
         result["error"] = (
-            "pdfplumber not installed on server. "
-            "Please use manual entry."
+            "pdfplumber is not installed. Please use manual entry."
         )
         return result
 
@@ -370,30 +625,25 @@ def extract_cv_fields(pdf_bytes: bytes) -> dict:
 
         if len(text) < 100:
             result["error"] = (
-                "Could not extract text from this PDF. "
-                "It may be a scanned image. "
-                "Please use manual entry below."
+                "Could not extract sufficient text from this PDF. "
+                "It may be scanned or image-based. "
+                "Please use manual entry."
             )
             return result
 
-        branch, branch_conf = detect_branch(text)
-        cgpa, cgpa_conf     = detect_cgpa(text)
+        branch, branch_conf            = detect_branch(text)
+        cgpa, cgpa_conf, cgpa_note     = detect_cgpa(text)
 
-        result["btech_branch"]       = branch
-        result["btech_cgpa"]         = cgpa
-        result["branch_display"]     = BRANCH_DISPLAY.get(branch, branch)
-        result["branch_confidence"]  = branch_conf
-        result["cgpa_confidence"]    = cgpa_conf
-        result["extraction_success"] = True
-        result["needs_confirmation"] = True
-
-        if cgpa_conf == "medium":
-            result["cgpa_note"] = (
-                "Multiple CGPAs found in CV. "
-                "Please verify this is your B.Tech CGPA."
-            )
+        result["btech_branch"]         = branch
+        result["btech_cgpa"]           = cgpa
+        result["branch_display"]       = BRANCH_DISPLAY.get(branch, branch)
+        result["branch_confidence"]    = branch_conf
+        result["cgpa_confidence"]      = cgpa_conf
+        result["cgpa_note"]            = cgpa_note
+        result["extraction_success"]   = True
+        result["needs_confirmation"]   = True
 
     except Exception as e:
-        result["error"] = f"Extraction failed: {str(e)}"
+        result["error"] = f"CV extraction failed: {str(e)}"
 
     return result
